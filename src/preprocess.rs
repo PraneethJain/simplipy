@@ -186,14 +186,17 @@ fn traverse_stmt<'a, 'b>(
             }
         }
 
+        Stmt::FunctionDef(ast::StmtFunctionDef {
+            name, args, body, ..
+        }) => {
+            traverse_body(cur_lineno, body, line_index, source, static_info);
+        }
         _ => {} // Stmt::FunctionDef(..) => todo!(),
                 // Stmt::ClassDef(_) => todo!(),
                 // Stmt::Return(_) => todo!(),
                 // Stmt::Assign(_) => todo!(),
                 // Stmt::Expr(_) => todo!(),
                 // Stmt::Pass(_) => todo!(),
-                // Stmt::Break(_) => todo!(),
-                // Stmt::Continue(_) => todo!(),
                 // Stmt::Global(_) => todo!(),
                 // Stmt::Nonlocal(_) => todo!(),
                 // Stmt::Import(_) => todo!(),

@@ -256,4 +256,48 @@ z = 4
             assert_eq!(false_stmt[&cur], next);
         }
     }
+
+    #[test]
+    fn function_with_while() {
+        let source = r#"
+def f(x ,y):
+    a = 2
+    while True:
+        break
+        continue
+    def g(z):
+        return x + y + z
+
+    return g
+
+x = f()
+y = x()
+
+print(y)
+"#;
+        let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+        let line_index = LineIndex::from_source_text(source);
+        let module = ast.as_module().unwrap();
+        let Static {
+            next_stmt,
+            true_stmt,
+            false_stmt,
+            ..
+        } = preprocess_module(module, &line_index, &source);
+
+        println!("{:?}", next_stmt);
+
+        for (cur, next) in [(2, 12), (3, 4), (5, 7), (6, 4), (7, 10), (12, 13), (13, 15)] {
+            println!("{}", cur);
+            assert_eq!(next_stmt[&cur], next);
+        }
+
+        for (cur, next) in [(4, 5)] {
+            assert_eq!(true_stmt[&cur], next);
+        }
+
+        for (cur, next) in [(4, 7)] {
+            assert_eq!(false_stmt[&cur], next);
+        }
+    }
 }
