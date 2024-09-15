@@ -24,6 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         next_stmt,
         true_stmt,
         false_stmt,
+        decvars,
         ..
     } = preprocess_module(module, &line_index, &source);
 
@@ -34,6 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("true: {:?}", true_stmt);
     println!("--------------------------------------------------");
     println!("false: {:?}", false_stmt);
+    println!("--------------------------------------------------");
+    println!("decvars: {:?}", decvars);
 
     Ok(())
 }
@@ -41,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::collections::BTreeSet;
 
     #[test]
     fn simple_sequential() {
@@ -52,8 +56,11 @@ z = x + y
         let ast = parse(source, Mode::Module, "<embedded>").unwrap();
         let line_index = LineIndex::from_source_text(source);
         let module = ast.as_module().unwrap();
-        let Static { next_stmt, .. } = preprocess_module(module, &line_index, &source);
+        let Static {
+            next_stmt, decvars, ..
+        } = preprocess_module(module, &line_index, &source);
         next_stmt.iter().for_each(|(&a, &b)| assert_eq!(a + 1, b));
+        assert_eq!(decvars[&0], BTreeSet::from(["x", "y", "z"]));
     }
 
     #[test]
@@ -89,8 +96,11 @@ z = x + y                           # 22
             next_stmt,
             true_stmt,
             false_stmt,
+            decvars,
             ..
         } = preprocess_module(module, &line_index, &source);
+
+        assert_eq!(decvars[&0], BTreeSet::from(["x", "y", "z"]));
 
         for (cur, next) in [
             (2, 3),
@@ -166,10 +176,11 @@ z = x + y
             next_stmt,
             true_stmt,
             false_stmt,
+            decvars,
             ..
         } = preprocess_module(module, &line_index, &source);
 
-        println!("{:?}", next_stmt);
+        assert_eq!(decvars[&0], BTreeSet::from(["x", "y", "z"]));
 
         for (cur, next) in [
             (2, 3),
@@ -185,7 +196,6 @@ z = x + y
             (22, 23),
             (23, 18),
         ] {
-            println!("{}", cur);
             assert_eq!(next_stmt[&cur], next);
         }
 
@@ -238,13 +248,13 @@ z = 4
             next_stmt,
             true_stmt,
             false_stmt,
+            decvars,
             ..
         } = preprocess_module(module, &line_index, &source);
 
-        println!("{:?}", next_stmt);
+        assert_eq!(decvars[&0], BTreeSet::from(["z"]));
 
         for (cur, next) in [(3, 6), (4, 2), (8, 10), (9, 7), (10, 13), (11, 6)] {
-            println!("{}", cur);
             assert_eq!(next_stmt[&cur], next);
         }
 
@@ -282,13 +292,15 @@ print(y)
             next_stmt,
             true_stmt,
             false_stmt,
+            decvars,
             ..
         } = preprocess_module(module, &line_index, &source);
 
-        println!("{:?}", next_stmt);
+        assert_eq!(decvars[&0], BTreeSet::from(["f", "x", "y"]));
+        assert_eq!(decvars[&2], BTreeSet::from(["a", "x", "y", "g"]));
+        assert_eq!(decvars[&7], BTreeSet::from(["z"]));
 
         for (cur, next) in [(2, 12), (3, 4), (5, 7), (6, 4), (7, 10), (12, 13), (13, 15)] {
-            println!("{}", cur);
             assert_eq!(next_stmt[&cur], next);
         }
 

@@ -1,5 +1,5 @@
 use rustpython_parser::ast::{self, source_code::LineIndex, ModModule, Ranged, Stmt};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 macro_rules! get_current_line {
     ($line_index:expr, $stmt:expr, $source:expr) => {
@@ -9,13 +9,16 @@ macro_rules! get_current_line {
             .get() as u64
     };
 }
+
 #[derive(Debug, Default)]
 pub struct Static<'a> {
     pub statements: BTreeMap<u64, &'a Stmt>,
     pub next_stmt: BTreeMap<u64, u64>,
     pub true_stmt: BTreeMap<u64, u64>,
     pub false_stmt: BTreeMap<u64, u64>,
+    pub decvars: BTreeMap<u64, BTreeSet<&'a str>>,
     parent_map: BTreeMap<u64, u64>,
+    cur_scope_lineno: u64,
 }
 
 pub fn preprocess_module<'a>(
@@ -24,6 +27,7 @@ pub fn preprocess_module<'a>(
     source: &str,
 ) -> Static<'a> {
     let mut static_info = Static::default();
+    static_info.decvars.insert(0, BTreeSet::new());
 
     traverse_module(module, line_index, source, &mut static_info);
 
@@ -189,12 +193,39 @@ fn traverse_stmt<'a, 'b>(
         Stmt::FunctionDef(ast::StmtFunctionDef {
             name, args, body, ..
         }) => {
+            static_info
+                .decvars
+                .get_mut(&static_info.cur_scope_lineno)
+                .expect("decvars must be created for the scope before assignment")
+                .insert(name.as_str());
+
+            let old_scope_lineno = static_info.cur_scope_lineno;
+            static_info.cur_scope_lineno = cur_lineno;
+
+            static_info.decvars.insert(
+                cur_lineno,
+                BTreeSet::from_iter(args.args.iter().map(|x| x.def.arg.as_str())),
+            );
             traverse_body(cur_lineno, body, line_index, source, static_info);
+            static_info.cur_scope_lineno = old_scope_lineno;
         }
-        _ => {} // Stmt::FunctionDef(..) => todo!(),
-                // Stmt::ClassDef(_) => todo!(),
+        Stmt::Assign(ast::StmtAssign { targets, .. }) => {
+            if targets.len() != 1 {
+                panic!("Expected simple assignment");
+            }
+            let var = targets[0]
+                .as_name_expr()
+                .expect("Expected simple assignment")
+                .id
+                .as_str();
+            static_info
+                .decvars
+                .get_mut(&static_info.cur_scope_lineno)
+                .expect("decvars must be created for the scope before assignment")
+                .insert(var);
+        }
+        _ => {} // Stmt::ClassDef(_) => todo!(),
                 // Stmt::Return(_) => todo!(),
-                // Stmt::Assign(_) => todo!(),
                 // Stmt::Expr(_) => todo!(),
                 // Stmt::Pass(_) => todo!(),
                 // Stmt::Global(_) => todo!(),
