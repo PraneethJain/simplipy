@@ -1,0 +1,14 @@
+* SimpliPy (WIP)
+SimpliPy is a /simple/ Python interpreter modelled as a *transition system*.
+
+The main goals of this interpreter are:
++ Cover a core subset of the language, including most control flow constructs and Python's rich scoping.
++ Construct precise semantics of this subset, faithful to /CPython/.
++ Build a better understanding and a mental model of Python.
+
+*Note*: This project uses [https://github.com/RustPython/Parser][RustPython's parser] to generate the AST and only focuses on the semantics.
+
+* Non-Goals
++ Cover the full syntax and semantics of Python.
++ Write a highly optimized interpreter.
+
