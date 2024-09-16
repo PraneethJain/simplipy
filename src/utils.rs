@@ -3,7 +3,9 @@ use rustpython_parser::ast::{self, Expr};
 use crate::datatypes::{Env, StorableValue, Store};
 
 pub fn env_lookup(var: &str, env: &Env) -> Option<usize> {
-    env.iter().find_map(|local_env| local_env.get(var).copied())
+    env.iter()
+        .rev()
+        .find_map(|local_env| local_env.get(var).copied())
 }
 
 pub fn lookup<'a>(var: &str, env: &Env, store: &'a Store) -> Option<&'a StorableValue> {
@@ -190,7 +192,11 @@ mod test {
         let result = eval_from_src(r#"1 >= 4 or 4 <= 1"#, &vec![BTreeMap::new()], &vec![]);
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
-        let result = eval_from_src(r#"1 >= 4 or 4 <= 1 or True"#, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            r#"1 >= 4 or 4 <= 1 or True"#,
+            &vec![BTreeMap::new()],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
     }
 }
