@@ -30,7 +30,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut cur_state = init_state(&static_info);
     while !is_fixed_point(&cur_state, &static_info) {
         cur_state = tick(cur_state, &static_info).expect("Valid transition");
-        println!("{}: {:?}", cur_state.lineno, cur_state);
+        println!("====================================================");
+        println!("{:?}", cur_state.lineno);
+        println!(
+            "{:?}",
+            cur_state
+                .env
+                .iter()
+                .map(|local_env| local_env
+                    .iter()
+                    .map(|(var, idx)| (var, cur_state.store[*idx].clone()))
+                    .collect::<std::collections::BTreeMap<_, _>>())
+                .collect::<Vec<_>>()
+        )
     }
 
     Ok(())
