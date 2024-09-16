@@ -50,7 +50,44 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
                 | Operator::MatMult => todo!(),
             }
         }
-        Expr::BoolOp(_) => todo!(),
+        Expr::Compare(ast::ExprCompare {
+            left,
+            ops,
+            comparators,
+            ..
+        }) => {
+            let mut left_val = &eval(left, env, store)?;
+            let right_vals = comparators
+                .iter()
+                .map(|x| eval(x, env, store))
+                .collect::<Option<Vec<_>>>()?;
+            let mut result = true;
+            for (right_val, op) in right_vals.iter().zip(ops.iter()) {
+                use ast::CmpOp;
+                result &= match op {
+                    CmpOp::Eq => left_val == right_val,
+                    CmpOp::NotEq => left_val != right_val,
+                    CmpOp::Lt => left_val < right_val,
+                    CmpOp::LtE => left_val <= right_val,
+                    CmpOp::Gt => left_val > right_val,
+                    CmpOp::GtE => left_val >= right_val,
+                    CmpOp::Is | CmpOp::IsNot | CmpOp::In | CmpOp::NotIn => todo!(),
+                };
+                left_val = right_val;
+            }
+
+            Some(StorableValue::Bool(result))
+        }
+        Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) => {
+            let vals = values
+                .iter()
+                .map(|x| eval(x, env, store).and_then(|x| x.as_bool()))
+                .collect::<Option<Vec<_>>>()?;
+            Some(StorableValue::Bool(match op {
+                ast::BoolOp::And => vals.iter().all(|&x| x),
+                ast::BoolOp::Or => vals.iter().any(|&x| x),
+            }))
+        }
         Expr::NamedExpr(_) => todo!(),
         Expr::UnaryOp(_) => todo!(),
         Expr::Lambda(_) => todo!(),
@@ -64,7 +101,6 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
         Expr::Await(_) => todo!(),
         Expr::Yield(_) => todo!(),
         Expr::YieldFrom(_) => todo!(),
-        Expr::Compare(_) => todo!(),
         Expr::Call(_) => todo!(),
         Expr::FormattedValue(_) => todo!(),
         Expr::JoinedStr(_) => todo!(),
@@ -135,5 +171,26 @@ mod test {
             result.unwrap(),
             StorableValue::String(String::from("world hello"))
         );
+    }
+
+    #[test]
+    fn eval_conditions() {
+        let result = eval_from_src(r#"1 < 2 < 3 < 4 < 5"#, &vec![BTreeMap::new()], &vec![]);
+        assert_eq!(result.unwrap(), StorableValue::Bool(true));
+
+        let result = eval_from_src(r#"1 < 2 < 3 < 4 < 2"#, &vec![BTreeMap::new()], &vec![]);
+        assert_eq!(result.unwrap(), StorableValue::Bool(false));
+
+        let result = eval_from_src(r#"1 < 5 and 3 > 2"#, &vec![BTreeMap::new()], &vec![]);
+        assert_eq!(result.unwrap(), StorableValue::Bool(true));
+
+        let result = eval_from_src(r#"1 < 2 < 4 or 2 > 4"#, &vec![BTreeMap::new()], &vec![]);
+        assert_eq!(result.unwrap(), StorableValue::Bool(true));
+
+        let result = eval_from_src(r#"1 >= 4 or 4 <= 1"#, &vec![BTreeMap::new()], &vec![]);
+        assert_eq!(result.unwrap(), StorableValue::Bool(false));
+
+        let result = eval_from_src(r#"1 >= 4 or 4 <= 1 or True"#, &vec![BTreeMap::new()], &vec![]);
+        assert_eq!(result.unwrap(), StorableValue::Bool(true));
     }
 }

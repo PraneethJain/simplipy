@@ -19,6 +19,21 @@ pub enum StorableValue {
     Closure(usize, Env),
 }
 
+impl PartialOrd for StorableValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        use std::cmp::Ordering;
+        match (self, other) {
+            (StorableValue::Bottom, StorableValue::Bottom) => Some(Ordering::Equal),
+            (StorableValue::None, StorableValue::None) => Some(Ordering::Equal),
+            (StorableValue::Bool(a), StorableValue::Bool(b)) => a.partial_cmp(b),
+            (StorableValue::Int(a), StorableValue::Int(b)) => a.partial_cmp(b),
+            (StorableValue::Float(a), StorableValue::Float(b)) => a.partial_cmp(b),
+            (StorableValue::String(a), StorableValue::String(b)) => a.partial_cmp(b),
+            _ => None,
+        }
+    }
+}
+
 impl Add for StorableValue {
     type Output = Option<StorableValue>;
 
@@ -125,6 +140,14 @@ impl StorableValue {
                 }
             }
             _ => None,
+        }
+    }
+
+    pub fn as_bool(self) -> Option<bool> {
+        if let StorableValue::Bool(bool_val) = self {
+            Some(bool_val)
+        } else {
+            None
         }
     }
 }
