@@ -4,9 +4,15 @@ use std::ops::{Add, Div, Mul, Rem, Sub};
 
 pub type LocalEnv = BTreeMap<String, usize>;
 pub type Env = Vec<LocalEnv>;
-pub type Closure = (u64, Env);
 pub type Stack = Vec<Closure>;
 pub type Store = Vec<StorableValue>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Closure {
+    Function(u64, Env),
+    Return(u64, Env),
+    Except(u64, Env),
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StorableValue {
@@ -16,7 +22,7 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    Closure(usize, Env),
+    Closure(Closure),
 }
 
 impl PartialOrd for StorableValue {
@@ -146,6 +152,14 @@ impl StorableValue {
     pub fn as_bool(self) -> Option<bool> {
         if let StorableValue::Bool(bool_val) = self {
             Some(bool_val)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_closure(self) -> Option<Closure> {
+        if let StorableValue::Closure(closure) = self {
+            Some(closure)
         } else {
             None
         }
