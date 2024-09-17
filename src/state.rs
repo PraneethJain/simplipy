@@ -4,9 +4,9 @@ use crate::datatypes::{Closure, Env, Stack, StorableValue, Store};
 use crate::preprocess::Static;
 use crate::utils::{eval, lookup, update};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct State {
-    pub lineno: u64,
+    pub lineno: usize,
     pub env: Env,
     pub stack: Stack,
     pub store: Store,
@@ -164,7 +164,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     .id
                     .as_str();
 
-                state.store = update(var, val, &state.env, state.store)?;
+                state.store = update(var, val, &ret_env, state.store)?;
 
                 Some(State {
                     lineno: static_info.next_stmt[&ret_lineno],
