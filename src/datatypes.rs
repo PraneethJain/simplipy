@@ -9,9 +9,9 @@ pub type Store = Vec<StorableValue>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Closure {
-    Function(u64, Env),
-    Return(u64, Env),
-    Except(u64, Env),
+    Function(usize, Env),
+    Return(usize, Env),
+    Except(usize, Env),
 }
 
 #[derive(Clone, Debug, PartialEq)]

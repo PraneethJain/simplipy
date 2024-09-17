@@ -6,19 +6,19 @@ macro_rules! get_current_line {
         $line_index
             .source_location($stmt.start(), $source)
             .row
-            .get() as u64
+            .get() as usize
     };
 }
 
 #[derive(Debug, Default)]
 pub struct Static<'a> {
-    pub statements: BTreeMap<u64, &'a Stmt>,
-    pub next_stmt: BTreeMap<u64, u64>,
-    pub true_stmt: BTreeMap<u64, u64>,
-    pub false_stmt: BTreeMap<u64, u64>,
-    pub decvars: BTreeMap<u64, BTreeSet<&'a str>>,
-    parent_map: BTreeMap<u64, u64>,
-    cur_scope_lineno: u64,
+    pub statements: BTreeMap<usize, &'a Stmt>,
+    pub next_stmt: BTreeMap<usize, usize>,
+    pub true_stmt: BTreeMap<usize, usize>,
+    pub false_stmt: BTreeMap<usize, usize>,
+    pub decvars: BTreeMap<usize, BTreeSet<&'a str>>,
+    parent_map: BTreeMap<usize, usize>,
+    cur_scope_lineno: usize,
 }
 
 pub fn preprocess_module<'a>(
@@ -38,7 +38,7 @@ fn new_block<'a>(
     body: &'a [Stmt],
     line_index: &LineIndex,
     source: &str,
-) -> (Vec<(u64, &'a Stmt)>, Vec<(u64, u64)>) {
+) -> (Vec<(usize, &'a Stmt)>, Vec<(usize, usize)>) {
     let new_statements: Vec<_> = body
         .iter()
         .map(|stmt| (get_current_line!(line_index, stmt, source), stmt))
@@ -70,7 +70,7 @@ fn traverse_module<'a, 'b>(
 }
 
 fn traverse_body<'a, 'b>(
-    parent_lineno: u64,
+    parent_lineno: usize,
     body: &'a [Stmt],
     line_index: &LineIndex,
     source: &str,
