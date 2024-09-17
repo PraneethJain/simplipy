@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ratatui = { version = "0.28.1", features = ["all-widgets"] }
 rustpython-parser = "0.4.0"

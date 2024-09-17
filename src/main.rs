@@ -1,13 +1,14 @@
 use rustpython_parser::{ast::source_code::LineIndex, parse, Mode};
-use std::{env, fs, time::Instant};
+use std::{env, fs};
 
+mod app;
 mod datatypes;
 mod preprocess;
 mod state;
 mod utils;
 
+use app::App;
 use preprocess::preprocess_module;
-use state::{init_state, is_fixed_point, tick};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -25,17 +26,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let module = ast.as_module().expect("Must be a python module");
     let static_info = preprocess_module(module, &line_index, &source);
 
-    let start = Instant::now();
-
-    let mut cur_state = init_state(&static_info);
-    while !is_fixed_point(&cur_state, &static_info) {
-        cur_state = tick(cur_state, &static_info).expect("Valid transition");
-    }
-
-    let duration = start.elapsed();
-    println!("Time taken: {:?}", duration);
-
-    println!("{:?}", cur_state);
+    let mut terminal = ratatui::init();
+    let _ = App::new(&source, &static_info).run(&mut terminal);
+    ratatui::restore();
 
     Ok(())
 }
