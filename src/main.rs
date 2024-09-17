@@ -1,5 +1,5 @@
 use rustpython_parser::{ast::source_code::LineIndex, parse, Mode};
-use std::{env, fs};
+use std::{env, fs, time::Instant};
 
 mod datatypes;
 mod preprocess;
@@ -25,25 +25,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let module = ast.as_module().expect("Must be a python module");
     let static_info = preprocess_module(module, &line_index, &source);
 
-    println!("{:?}", ast);
+    let start = Instant::now();
 
     let mut cur_state = init_state(&static_info);
     while !is_fixed_point(&cur_state, &static_info) {
         cur_state = tick(cur_state, &static_info).expect("Valid transition");
-        println!("====================================================");
-        println!("{:?}", cur_state.lineno);
-        println!(
-            "{:?}",
-            cur_state
-                .env
-                .iter()
-                .map(|local_env| local_env
-                    .iter()
-                    .map(|(var, idx)| (var, cur_state.store[*idx].clone()))
-                    .collect::<std::collections::BTreeMap<_, _>>())
-                .collect::<Vec<_>>()
-        )
     }
+
+    let duration = start.elapsed();
+    println!("Time taken: {:?}", duration);
+
+    println!("{:?}", cur_state);
 
     Ok(())
 }
