@@ -85,12 +85,11 @@ impl<'a> App<'a> {
 
 impl<'a> Widget for &State {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let [env_area, store_area, stack_area] = Layout::vertical([
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-            Constraint::Fill(1),
-        ])
-        .areas(area);
+        let [var_area, stack_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(area);
+
+        let [env_area, store_area] =
+            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
 
         Block::bordered()
             .title(Title::from("Environment".bold()))
