@@ -2,7 +2,6 @@ use std::io;
 
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick, State};
-use ratatui::layout::Direction;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -10,10 +9,7 @@ use ratatui::{
     style::Stylize,
     symbols::border,
     text::{Line, Text},
-    widgets::{
-        block::{Position, Title},
-        Block, Paragraph, Widget,
-    },
+    widgets::{block::Title, Block, Paragraph, Widget},
     DefaultTerminal, Frame,
 };
 
@@ -100,11 +96,8 @@ impl<'a> Widget for &State {
             self.store
                 .iter()
                 .enumerate()
-                .flat_map(|(i, val)| {
-                    vec![
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into()),
-                        Line::from(""),
-                    ]
+                .map(|(i, val)| {
+                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
                 })
                 .collect::<Vec<_>>(),
         ))
@@ -119,11 +112,8 @@ impl<'a> Widget for &State {
             self.stack
                 .iter()
                 .enumerate()
-                .flat_map(|(i, val)| {
-                    vec![
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into()),
-                        Line::from(""),
-                    ]
+                .map(|(i, val)| {
+                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
                 })
                 .collect::<Vec<_>>(),
         ))
@@ -160,12 +150,12 @@ impl<'a> Widget for &App<'_> {
             self.source
                 .lines()
                 .enumerate()
-                .flat_map(|(i, x)| {
-                    let mut line = Line::from(((i + 1).to_string() + ": ").blue() + x.into());
+                .map(|(i, x)| {
+                    let mut line = Line::from((format!("{:02}: ", i + 1)).blue() + x.into());
                     if i + 1 == self.cur_state.lineno {
                         line = line.on_black();
                     }
-                    vec![line, Line::from("")]
+                    line
                 })
                 .collect::<Vec<_>>(),
         ))
