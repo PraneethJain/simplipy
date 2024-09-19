@@ -201,8 +201,5 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
 pub fn is_fixed_point(state: &State, static_info: &Static) -> bool {
     let lineno = state.lineno;
-
-    !(static_info.true_stmt.contains_key(&lineno)
-        || static_info.false_stmt.contains_key(&lineno)
-        || static_info.next_stmt.contains_key(&lineno))
+    static_info.next_stmt[&lineno] == lineno
 }

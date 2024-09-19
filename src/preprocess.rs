@@ -31,6 +31,14 @@ pub fn preprocess_module<'a>(
 
     traverse_module(module, line_index, source, &mut static_info);
 
+    let last_lineno = *static_info
+        .statements
+        .keys()
+        .max()
+        .expect("Module should be non-empty");
+
+    static_info.next_stmt.insert(last_lineno, last_lineno);
+
     static_info
 }
 
