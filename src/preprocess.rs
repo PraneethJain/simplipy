@@ -273,7 +273,7 @@ z = x + y
         let Static {
             next_stmt, decvars, ..
         } = preprocess_module(module, &line_index, &source);
-        next_stmt.iter().for_each(|(&a, &b)| assert_eq!(a + 1, b));
+        assert_eq!(BTreeMap::from([(2, 3), (3, 4), (4, 4)]), next_stmt);
         assert_eq!(decvars[&0], BTreeSet::from(["x", "y", "z"]));
     }
 
