@@ -4,7 +4,7 @@ use crate::datatypes::{Closure, Env, LocalEnv, Stack, StorableValue, Store};
 use crate::preprocess::Static;
 use crate::utils::{eval, lookup, update};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct State {
     pub lineno: usize,
     pub env: Env,

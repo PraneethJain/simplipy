@@ -25,14 +25,18 @@ pub struct App<'a> {
 
 impl<'a> App<'a> {
     pub fn new(source: &'a str, static_info: &'a Static) -> App<'a> {
-        Self {
+        let mut app = Self {
             cur_state: init_state(static_info),
             states: vec![],
             static_info,
             source,
             exit: false,
             expand_closures: false,
-        }
+        };
+
+        app.states.push(app.cur_state.clone());
+
+        app
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
@@ -65,6 +69,7 @@ impl<'a> App<'a> {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Char('e') => self.expand_closures = !self.expand_closures,
             KeyCode::Right => self.next_state(),
+            KeyCode::Left => self.prev_state(),
             _ => {}
         }
     }
@@ -74,11 +79,25 @@ impl<'a> App<'a> {
     }
 
     fn next_state(&mut self) {
-        if is_fixed_point(&self.cur_state, self.static_info) {
-            self.exit = true;
-        } else {
-            self.states.push(self.cur_state.clone());
-            self.cur_state = tick(self.cur_state.clone(), self.static_info).unwrap();
+        match self.states.iter().position(|x| x == &self.cur_state) {
+            Some(idx) => {
+                if let Some(next_state) = self.states.get(idx + 1) {
+                    self.cur_state = next_state.clone();
+                } else {
+                    if !is_fixed_point(&self.cur_state, self.static_info) {
+                        self.cur_state = tick(self.cur_state.clone(), self.static_info).unwrap();
+                        self.states.push(self.cur_state.clone());
+                    }
+                }
+            }
+            None => panic!("Current state not in the possible states"),
+        }
+    }
+
+    fn prev_state(&mut self) {
+        match self.states.iter().position(|x| x == &self.cur_state) {
+            Some(idx) => self.cur_state = self.states[idx.saturating_sub(1)].clone(),
+            None => panic!("Current state not in the possible states"),
         }
     }
 }
