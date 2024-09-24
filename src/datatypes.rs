@@ -2,10 +2,21 @@ use rustpython_parser::ast::bigint::BigInt;
 use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
-pub type LocalEnv = BTreeMap<String, usize>;
 pub type Env = Vec<LocalEnv>;
 pub type Stack = Vec<Closure>;
 pub type Store = Vec<StorableValue>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocalEnv {
+    pub mapping: BTreeMap<String, usize>,
+    pub func_name: String,
+}
+
+impl LocalEnv {
+    pub fn new(mapping: BTreeMap<String, usize>, func_name: String) -> Self {
+        Self { mapping, func_name }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Closure {

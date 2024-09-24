@@ -5,7 +5,7 @@ use crate::datatypes::{Env, StorableValue, Store};
 pub fn env_lookup(var: &str, env: &Env) -> Option<usize> {
     env.iter()
         .rev()
-        .find_map(|local_env| local_env.get(var).copied())
+        .find_map(|local_env| local_env.mapping.get(var).copied())
 }
 
 pub fn lookup<'a>(var: &str, env: &Env, store: &'a Store) -> Option<&'a StorableValue> {
@@ -126,6 +126,7 @@ pub fn update(var: &str, val: StorableValue, env: &Env, mut store: Store) -> Opt
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::datatypes::LocalEnv;
     use rustpython_parser::{ast::bigint::BigInt, parse, Mode};
     use std::collections::BTreeMap;
 
@@ -138,7 +139,11 @@ mod test {
     #[test]
     fn eval_simple() {
         let source = r#"1 + 2 * 3 + 2"#;
-        let result = eval_from_src(source, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            source,
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Int(BigInt::from(9)));
     }
 
@@ -147,11 +152,14 @@ mod test {
         let source = r#"x + y*y*y + z + 2*8 + 8/4"#;
         let result = eval_from_src(
             source,
-            &vec![BTreeMap::from([
-                ("x".to_string(), 0),
-                ("y".to_string(), 1),
-                ("z".to_string(), 2),
-            ])],
+            &vec![LocalEnv::new(
+                BTreeMap::from([
+                    ("x".to_string(), 0),
+                    ("y".to_string(), 1),
+                    ("z".to_string(), 2),
+                ]),
+                "".to_string(),
+            )],
             &vec![
                 StorableValue::Int(BigInt::from(0)),
                 StorableValue::Int(BigInt::from(2)),
@@ -166,7 +174,10 @@ mod test {
         let source = r#"x +  "hello""#;
         let result = eval_from_src(
             source,
-            &vec![BTreeMap::from([("x".to_string(), 0)])],
+            &vec![LocalEnv::new(
+                BTreeMap::from([("x".to_string(), 0)]),
+                "".to_string(),
+            )],
             &vec![StorableValue::String(String::from("world "))],
         );
         assert_eq!(
@@ -177,24 +188,44 @@ mod test {
 
     #[test]
     fn eval_conditions() {
-        let result = eval_from_src(r#"1 < 2 < 3 < 4 < 5"#, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            r#"1 < 2 < 3 < 4 < 5"#,
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
-        let result = eval_from_src(r#"1 < 2 < 3 < 4 < 2"#, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            r#"1 < 2 < 3 < 4 < 2"#,
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
-        let result = eval_from_src(r#"1 < 5 and 3 > 2"#, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            r#"1 < 5 and 3 > 2"#,
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
-        let result = eval_from_src(r#"1 < 2 < 4 or 2 > 4"#, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            r#"1 < 2 < 4 or 2 > 4"#,
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
-        let result = eval_from_src(r#"1 >= 4 or 4 <= 1"#, &vec![BTreeMap::new()], &vec![]);
+        let result = eval_from_src(
+            r#"1 >= 4 or 4 <= 1"#,
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![],
+        );
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
         let result = eval_from_src(
             r#"1 >= 4 or 4 <= 1 or True"#,
-            &vec![BTreeMap::new()],
+            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));

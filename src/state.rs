@@ -1,6 +1,6 @@
 use rustpython_parser::ast::{self, Stmt};
 
-use crate::datatypes::{Closure, Env, Stack, StorableValue, Store};
+use crate::datatypes::{Closure, Env, LocalEnv, Stack, StorableValue, Store};
 use crate::preprocess::Static;
 use crate::utils::{eval, lookup, update};
 
@@ -19,11 +19,14 @@ pub fn init_state(static_info: &Static) -> State {
             .keys()
             .min()
             .expect("Atleast one statement should be present"),
-        env: vec![static_info.decvars[&0]
-            .iter()
-            .enumerate()
-            .map(|(a, b)| (b.to_string(), a))
-            .collect()],
+        env: vec![LocalEnv::new(
+            static_info.decvars[&0]
+                .iter()
+                .enumerate()
+                .map(|(a, b)| (b.to_string(), a))
+                .collect(),
+            "Global".to_string(),
+        )],
         stack: vec![],
         store: vec![StorableValue::Bottom; static_info.decvars[&0].len()],
     }
@@ -70,13 +73,14 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                     let n = state.store.len();
                     state.env = func_env;
-                    state.env.push(
+                    state.env.push(LocalEnv::new(
                         static_info.decvars[&func_lineno]
                             .iter()
                             .enumerate()
                             .map(|(i, x)| (x.to_string(), n + i))
                             .collect(),
-                    );
+                        func_name.to_string(),
+                    ));
                     state.store.extend(vec![
                         StorableValue::Bottom;
                         static_info.decvars[&func_lineno].len()

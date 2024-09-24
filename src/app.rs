@@ -2,6 +2,7 @@ use std::io;
 
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick, State};
+use ratatui::layout::Direction;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -87,10 +88,35 @@ impl<'a> Widget for &State {
         let [env_area, store_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
 
-        Block::bordered()
-            .title(Title::from("Environment".bold()))
-            .border_set(border::THICK)
-            .render(env_area, buf);
+        for (&local_env_area, local_env) in Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Fill(1); self.env.len()])
+            .vertical_margin(0)
+            .horizontal_margin(0)
+            .split(env_area)
+            .iter()
+            .rev()
+            .zip(self.env.iter())
+        {
+            Paragraph::new(Text::from(
+                local_env
+                    .mapping
+                    .iter()
+                    .map(|(i, val)| {
+                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .block(
+                Block::bordered()
+                    .title(
+                        Title::from(format!("{} Env", local_env.func_name))
+                            .alignment(Alignment::Center),
+                    )
+                    .border_set(border::ROUNDED),
+            )
+            .render(local_env_area, buf);
+        }
 
         Paragraph::new(Text::from(
             self.store
@@ -104,7 +130,7 @@ impl<'a> Widget for &State {
         .block(
             Block::bordered()
                 .title(Title::from("Store").alignment(Alignment::Center))
-                .border_set(border::THICK),
+                .border_set(border::ROUNDED),
         )
         .render(store_area, buf);
 
@@ -120,7 +146,7 @@ impl<'a> Widget for &State {
         .block(
             Block::bordered()
                 .title(Title::from("Stack").alignment(Alignment::Center))
-                .border_set(border::THICK),
+                .border_set(border::ROUNDED),
         )
         .render(stack_area, buf);
     }
@@ -162,7 +188,7 @@ impl<'a> Widget for &App<'_> {
         .block(
             Block::bordered()
                 .title(Title::from(" Source Code ".bold()).alignment(Alignment::Center))
-                .border_set(border::THICK),
+                .border_set(border::ROUNDED),
         )
         .render(code_area, buf);
 
