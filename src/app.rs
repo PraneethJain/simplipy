@@ -1,5 +1,4 @@
-use std::io;
-
+use crate::datatypes::{Closure, StorableValue};
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick, State};
 use ratatui::layout::Direction;
@@ -13,6 +12,7 @@ use ratatui::{
     widgets::{block::Title, Block, Paragraph, Widget},
     DefaultTerminal, Frame,
 };
+use std::io;
 
 pub struct App<'a> {
     cur_state: State,
@@ -20,6 +20,7 @@ pub struct App<'a> {
     static_info: &'a Static<'a>,
     source: &'a str,
     exit: bool,
+    expand_closures: bool,
 }
 
 impl<'a> App<'a> {
@@ -30,6 +31,7 @@ impl<'a> App<'a> {
             static_info,
             source,
             exit: false,
+            expand_closures: false,
         }
     }
 
@@ -61,6 +63,7 @@ impl<'a> App<'a> {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         match key_event.code {
             KeyCode::Char('q') => self.exit(),
+            KeyCode::Char('e') => self.expand_closures = !self.expand_closures,
             KeyCode::Right => self.next_state(),
             _ => {}
         }
@@ -77,78 +80,6 @@ impl<'a> App<'a> {
             self.states.push(self.cur_state.clone());
             self.cur_state = tick(self.cur_state.clone(), self.static_info).unwrap();
         }
-    }
-}
-
-impl<'a> Widget for &State {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let [var_area, stack_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(area);
-
-        let [env_area, store_area] =
-            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
-
-        for (&local_env_area, local_env) in Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Fill(1); self.env.len()])
-            .vertical_margin(0)
-            .horizontal_margin(0)
-            .split(env_area)
-            .iter()
-            .rev()
-            .zip(self.env.iter())
-        {
-            Paragraph::new(Text::from(
-                local_env
-                    .mapping
-                    .iter()
-                    .map(|(i, val)| {
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .block(
-                Block::bordered()
-                    .title(
-                        Title::from(format!("{} Env", local_env.func_name))
-                            .alignment(Alignment::Center),
-                    )
-                    .border_set(border::ROUNDED),
-            )
-            .render(local_env_area, buf);
-        }
-
-        Paragraph::new(Text::from(
-            self.store
-                .iter()
-                .enumerate()
-                .map(|(i, val)| {
-                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                })
-                .collect::<Vec<_>>(),
-        ))
-        .block(
-            Block::bordered()
-                .title(Title::from("Store").alignment(Alignment::Center))
-                .border_set(border::ROUNDED),
-        )
-        .render(store_area, buf);
-
-        Paragraph::new(Text::from(
-            self.stack
-                .iter()
-                .enumerate()
-                .map(|(i, val)| {
-                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                })
-                .collect::<Vec<_>>(),
-        ))
-        .block(
-            Block::bordered()
-                .title(Title::from("Stack").alignment(Alignment::Center))
-                .border_set(border::ROUNDED),
-        )
-        .render(stack_area, buf);
     }
 }
 
@@ -192,8 +123,116 @@ impl<'a> Widget for &App<'_> {
         )
         .render(code_area, buf);
 
-        // state
-        self.cur_state.render(state_area, buf);
+        let [var_area, stack_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(state_area);
+
+        let [env_area, store_area] =
+            Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
+
+        for (&local_env_area, local_env) in Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Fill(1); self.cur_state.env.len()])
+            .vertical_margin(0)
+            .horizontal_margin(0)
+            .split(env_area)
+            .iter()
+            .rev()
+            .zip(self.cur_state.env.iter())
+        {
+            Paragraph::new(Text::from(
+                local_env
+                    .mapping
+                    .iter()
+                    .map(|(i, val)| {
+                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .block(
+                Block::bordered()
+                    .title(
+                        Title::from(format!("{} Env", local_env.func_name))
+                            .alignment(Alignment::Center),
+                    )
+                    .border_set(border::ROUNDED),
+            )
+            .render(local_env_area, buf);
+        }
+
+        Paragraph::new(Text::from(
+            self.cur_state
+                .store
+                .iter()
+                .enumerate()
+                .flat_map(|(i, val)| {
+                    if let StorableValue::Closure(Closure::Function(lineno, env)) = val {
+                        if self.expand_closures {
+                            let mut v = vec![Line::from(
+                                format!("{}: ", i).bold().blue()
+                                    + format!(
+                                        "Closure with {} at line {}",
+                                        env.iter()
+                                            .map(|x| x.func_name.clone())
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                        lineno
+                                    )
+                                    .into(),
+                            )];
+
+                            v.extend(env.iter().map(|local_env| {
+                                Line::from(format!(
+                                    "{}: {:?}",
+                                    local_env.func_name, local_env.mapping
+                                ))
+                            }));
+
+                            v
+                        } else {
+                            vec![Line::from(
+                                format!("{}: ", i).bold().blue()
+                                    + format!(
+                                        "Closure with {} at line {}",
+                                        env.iter()
+                                            .map(|x| x.func_name.clone())
+                                            .collect::<Vec<_>>()
+                                            .join(", "),
+                                        lineno
+                                    )
+                                    .into(),
+                            )]
+                        }
+                    } else {
+                        vec![Line::from(
+                            format!("{}: ", i).bold().blue() + format!("{:?}", val).into(),
+                        )]
+                    }
+                })
+                .collect::<Vec<_>>(),
+        ))
+        .block(
+            Block::bordered()
+                .title(Title::from("Store").alignment(Alignment::Center))
+                .border_set(border::ROUNDED),
+        )
+        .render(store_area, buf);
+
+        Paragraph::new(Text::from(
+            self.cur_state
+                .stack
+                .iter()
+                .enumerate()
+                .map(|(i, val)| {
+                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                })
+                .collect::<Vec<_>>(),
+        ))
+        .block(
+            Block::bordered()
+                .title(Title::from("Stack").alignment(Alignment::Center))
+                .border_set(border::ROUNDED),
+        )
+        .render(stack_area, buf);
 
         // instructions
         Block::new()
@@ -202,6 +241,8 @@ impl<'a> Widget for &App<'_> {
                 "<Left>".blue().bold(),
                 " Next State ".into(),
                 "<Right>".blue().bold(),
+                " Expand Closures ".into(),
+                "<E>".blue().bold(),
                 " Quit ".into(),
                 "<Q> ".blue().bold(),
             ])))
