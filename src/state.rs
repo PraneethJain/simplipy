@@ -1,6 +1,8 @@
 use rustpython_parser::ast::{self, Stmt};
 
-use crate::datatypes::{Closure, Env, LocalEnv, Stack, StorableValue, Store};
+use crate::datatypes::{
+    ApplicationClosure, DefinitionClosure, Env, FlatEnv, Stack, StorableValue, Store,
+};
 use crate::preprocess::Static;
 use crate::utils::{eval, lookup, update};
 
@@ -19,7 +21,7 @@ pub fn init_state(static_info: &Static) -> State {
             .keys()
             .min()
             .expect("Atleast one statement should be present"),
-        env: vec![LocalEnv::new(
+        env: vec![FlatEnv::new(
             static_info.decvars[&0]
                 .iter()
                 .enumerate()
@@ -46,70 +48,66 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
             if let Some(ast::ExprCall { func, args, .. }) = value.as_call_expr() {
                 let func_name = func.as_name_expr()?.id.as_str();
-                if let Closure::Function(func_lineno, func_env) =
+                let DefinitionClosure(func_lineno, func_env) =
                     lookup(func_name, &state.env, &state.store)?
                         .clone()
-                        .as_closure()?
-                {
-                    let func_stmt = static_info.statements[&func_lineno].as_function_def_stmt()?;
-                    let formals = func_stmt
-                        .args
-                        .args
-                        .iter()
-                        .map(|x| x.def.arg.as_str())
-                        .collect::<Vec<_>>();
+                        .as_closure()?;
+                let func_stmt = static_info.statements[&func_lineno].as_function_def_stmt()?;
+                let formals = func_stmt
+                    .args
+                    .args
+                    .iter()
+                    .map(|x| x.def.arg.as_str())
+                    .collect::<Vec<_>>();
 
-                    if func_stmt.args.args.len() != args.len() {
-                        panic!("Function call with wrong number of arguments");
-                    }
-
-                    let vals = args
-                        .iter()
-                        .map(|x| eval(x, &state.env, &state.store))
-                        .collect::<Option<Vec<_>>>()?;
-
-                    let return_closure = Closure::Return(lineno, state.env);
-                    state.stack.push(return_closure);
-
-                    let n = state.store.len();
-                    state.env = func_env;
-                    state.env.push(LocalEnv::new(
-                        static_info.decvars[&func_lineno]
-                            .iter()
-                            .enumerate()
-                            .map(|(i, x)| (x.to_string(), n + i))
-                            .collect(),
-                        func_name.to_string(),
-                    ));
-                    state.store.extend(vec![
-                        StorableValue::Bottom;
-                        static_info.decvars[&func_lineno].len()
-                    ]);
-
-                    for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-                        state.store = update(formal, val, &state.env, state.store)?;
-                    }
-
-                    let func_body_lineno = *if let Some((func_body_lineno, _)) = static_info
-                        .statements
-                        .range((
-                            std::ops::Bound::Excluded(func_lineno),
-                            std::ops::Bound::Unbounded,
-                        ))
-                        .next()
-                    {
-                        func_body_lineno
-                    } else {
-                        panic!("Function body cannot be empty");
-                    };
-
-                    Some(State {
-                        lineno: func_body_lineno,
-                        ..state
-                    })
-                } else {
-                    panic!("Function called but closure is not a function closure");
+                if func_stmt.args.args.len() != args.len() {
+                    panic!("Function call with wrong number of arguments");
                 }
+
+                let vals = args
+                    .iter()
+                    .map(|x| eval(x, &state.env, &state.store))
+                    .collect::<Option<Vec<_>>>()?;
+
+                let return_closure = ApplicationClosure(lineno, state.env);
+                state.stack.push(return_closure);
+
+                let n = state.store.len();
+                state.env = func_env;
+                state.env.push(FlatEnv::new(
+                    static_info.decvars[&func_lineno]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, x)| (x.to_string(), n + i))
+                        .collect(),
+                    func_name.to_string(),
+                ));
+                state.store.extend(vec![
+                    StorableValue::Bottom;
+                    static_info.decvars[&func_lineno].len()
+                ]);
+
+                for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
+                    state.store = update(formal, val, &state.env, state.store)?;
+                }
+
+                let func_body_lineno = *if let Some((func_body_lineno, _)) = static_info
+                    .statements
+                    .range((
+                        std::ops::Bound::Excluded(func_lineno),
+                        std::ops::Bound::Unbounded,
+                    ))
+                    .next()
+                {
+                    func_body_lineno
+                } else {
+                    panic!("Function body cannot be empty");
+                };
+
+                Some(State {
+                    lineno: func_body_lineno,
+                    ..state
+                })
             } else {
                 let val = eval(&value, &state.env, &state.store)?;
                 let new_store = update(var, val, &state.env, state.store)?;
@@ -139,7 +137,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             })
         }
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) => {
-            let closure = StorableValue::Closure(Closure::Function(lineno, state.env.clone()));
+            let closure =
+                StorableValue::DefinitionClosure(DefinitionClosure(lineno, state.env.clone()));
             let new_store = update(name.as_str(), closure, &state.env, state.store)?;
             Some(State {
                 lineno: static_info.next_stmt[&lineno],
@@ -154,30 +153,27 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 StorableValue::None
             };
 
-            if let Closure::Return(ret_lineno, ret_env) = state
+            let ApplicationClosure(ret_lineno, ret_env) = state
                 .stack
                 .pop()
-                .expect("Non empty stack during function return")
-            {
-                let var = static_info.statements[&ret_lineno]
-                    .as_assign_stmt()
-                    .expect("Functions must be called in assignment statements")
-                    .targets[0]
-                    .as_name_expr()
-                    .expect("Assignments must be simple")
-                    .id
-                    .as_str();
+                .expect("Non empty stack during function return");
 
-                state.store = update(var, val, &ret_env, state.store)?;
+            let var = static_info.statements[&ret_lineno]
+                .as_assign_stmt()
+                .expect("Functions must be called in assignment statements")
+                .targets[0]
+                .as_name_expr()
+                .expect("Assignments must be simple")
+                .id
+                .as_str();
 
-                Some(State {
-                    lineno: static_info.next_stmt[&ret_lineno],
-                    env: ret_env,
-                    ..state
-                })
-            } else {
-                panic!("Return but closure is not a return closure");
-            }
+            state.store = update(var, val, &ret_env, state.store)?;
+
+            Some(State {
+                lineno: static_info.next_stmt[&ret_lineno],
+                env: ret_env,
+                ..state
+            })
         }
         Stmt::ClassDef(_) => todo!(),
         Stmt::Expr(_) => todo!(),

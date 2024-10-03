@@ -2,28 +2,26 @@ use rustpython_parser::ast::bigint::BigInt;
 use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
-pub type Env = Vec<LocalEnv>;
-pub type Stack = Vec<Closure>;
+pub type Env = Vec<FlatEnv>;
+pub type Stack = Vec<ApplicationClosure>;
 pub type Store = Vec<StorableValue>;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LocalEnv {
+pub struct FlatEnv {
     pub mapping: BTreeMap<String, usize>,
     pub func_name: String,
 }
 
-impl LocalEnv {
+impl FlatEnv {
     pub fn new(mapping: BTreeMap<String, usize>, func_name: String) -> Self {
         Self { mapping, func_name }
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Closure {
-    Function(usize, Env),
-    Return(usize, Env),
-    Except(usize, Env),
-}
+#[derive(Debug, Clone, PartialEq)]
+pub struct ApplicationClosure(pub usize, pub Env);
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefinitionClosure(pub usize, pub Env);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StorableValue {
@@ -33,7 +31,7 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    Closure(Closure),
+    DefinitionClosure(DefinitionClosure),
 }
 
 impl PartialOrd for StorableValue {
@@ -168,8 +166,8 @@ impl StorableValue {
         }
     }
 
-    pub fn as_closure(self) -> Option<Closure> {
-        if let StorableValue::Closure(closure) = self {
+    pub fn as_closure(self) -> Option<DefinitionClosure> {
+        if let StorableValue::DefinitionClosure(closure) = self {
             Some(closure)
         } else {
             None

@@ -126,7 +126,7 @@ pub fn update(var: &str, val: StorableValue, env: &Env, mut store: Store) -> Opt
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::datatypes::LocalEnv;
+    use crate::datatypes::FlatEnv;
     use rustpython_parser::{ast::bigint::BigInt, parse, Mode};
     use std::collections::BTreeMap;
 
@@ -141,7 +141,7 @@ mod test {
         let source = r#"1 + 2 * 3 + 2"#;
         let result = eval_from_src(
             source,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Int(BigInt::from(9)));
@@ -152,7 +152,7 @@ mod test {
         let source = r#"x + y*y*y + z + 2*8 + 8/4"#;
         let result = eval_from_src(
             source,
-            &vec![LocalEnv::new(
+            &vec![FlatEnv::new(
                 BTreeMap::from([
                     ("x".to_string(), 0),
                     ("y".to_string(), 1),
@@ -174,7 +174,7 @@ mod test {
         let source = r#"x +  "hello""#;
         let result = eval_from_src(
             source,
-            &vec![LocalEnv::new(
+            &vec![FlatEnv::new(
                 BTreeMap::from([("x".to_string(), 0)]),
                 "".to_string(),
             )],
@@ -190,42 +190,42 @@ mod test {
     fn eval_conditions() {
         let result = eval_from_src(
             r#"1 < 2 < 3 < 4 < 5"#,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
         let result = eval_from_src(
             r#"1 < 2 < 3 < 4 < 2"#,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
         let result = eval_from_src(
             r#"1 < 5 and 3 > 2"#,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
         let result = eval_from_src(
             r#"1 < 2 < 4 or 2 > 4"#,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
         let result = eval_from_src(
             r#"1 >= 4 or 4 <= 1"#,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
         let result = eval_from_src(
             r#"1 >= 4 or 4 <= 1 or True"#,
-            &vec![LocalEnv::new(BTreeMap::new(), "".to_string())],
+            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
