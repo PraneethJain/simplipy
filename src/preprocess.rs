@@ -247,25 +247,28 @@ fn traverse_stmt<'a, 'b>(
             if targets.len() != 1 {
                 panic!("Expected simple assignment");
             }
-            let var = targets[0]
-                .as_name_expr()
-                .expect("Expected simple assignment")
-                .id
-                .as_str();
-            match static_info.cur_scope_lineno {
-                Scope::Class(class_lineno) => {
-                    static_info
-                        .decfields
-                        .get_mut(&class_lineno)
-                        .expect("decfields must be created for the scope before assignment")
-                        .insert(var);
-                }
-                Scope::Function(func_lineno) => {
-                    static_info
-                        .decvars
-                        .get_mut(&func_lineno)
-                        .expect("decvars must be created for the scope before assignment")
-                        .insert(var);
+
+            if !targets[0].is_attribute_expr() {
+                let var = targets[0]
+                    .as_name_expr()
+                    .expect("Expected simple assignment")
+                    .id
+                    .as_str();
+                match static_info.cur_scope_lineno {
+                    Scope::Class(class_lineno) => {
+                        static_info
+                            .decfields
+                            .get_mut(&class_lineno)
+                            .expect("decfields must be created for the scope before assignment")
+                            .insert(var);
+                    }
+                    Scope::Function(func_lineno) => {
+                        static_info
+                            .decvars
+                            .get_mut(&func_lineno)
+                            .expect("decvars must be created for the scope before assignment")
+                            .insert(var);
+                    }
                 }
             }
         }
@@ -622,8 +625,52 @@ pass
 
         assert_eq!(decvars[&0], BTreeSet::from(["x", "A", "y"]));
         assert_eq!(decfields[&3], BTreeSet::from(["x", "y"]));
-        println!("{:?}", class);
         assert_eq!(class[&4], "A");
         assert_eq!(class[&5], "A");
+    }
+
+    #[test]
+    fn class_with_scope() {
+        let source = r#"
+def f(x, y):
+    class A:
+        x = 3
+        y = 5
+
+        def __init__(self):
+            self.x = x
+            self.y = y
+
+        def some_method(self):
+            pass
+    
+    return A
+
+z = f(2, 3)
+
+pass
+"#;
+        let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+        let line_index = LineIndex::from_source_text(source);
+        let module = ast.as_module().unwrap();
+        let Static {
+            class,
+            decfields,
+            decvars,
+            ..
+        } = preprocess_module(module, &line_index, &source);
+
+        assert_eq!(decvars[&0], BTreeSet::from(["f", "z"]));
+        assert_eq!(decvars[&2], BTreeSet::from(["x", "y", "A"]));
+        assert_eq!(decvars[&7], BTreeSet::from(["self"]));
+        assert_eq!(decvars[&11], BTreeSet::from(["self"]));
+        assert_eq!(
+            decfields[&3],
+            BTreeSet::from(["x", "y", "__init__", "some_method"])
+        );
+        assert_eq!(class[&4], "A");
+        assert_eq!(class[&5], "A");
+        assert_eq!(class[&7], "A");
+        assert_eq!(class[&11], "A");
     }
 }
