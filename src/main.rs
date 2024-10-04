@@ -1,14 +1,10 @@
 use rustpython_parser::{ast::source_code::LineIndex, parse, Mode};
 use std::{env, fs};
 
-mod app;
-mod datatypes;
-mod preprocess;
-mod state;
-mod utils;
 
-use app::App;
-use preprocess::preprocess_module;
+
+use simplipy::app::App;
+use simplipy::preprocess::preprocess_module;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
