@@ -17,6 +17,8 @@ pub struct Static<'a> {
     pub true_stmt: BTreeMap<usize, usize>,
     pub false_stmt: BTreeMap<usize, usize>,
     pub decvars: BTreeMap<usize, BTreeSet<&'a str>>,
+    pub class: BTreeMap<usize, &'a str>,
+    pub body: BTreeMap<usize, usize>,
     parent_map: BTreeMap<usize, usize>,
     cur_scope_lineno: usize,
 }
@@ -85,6 +87,9 @@ fn traverse_body<'a, 'b>(
     static_info: &'b mut Static<'a>,
 ) {
     let (new_statements, new_next_stmts) = new_block(body, line_index, source);
+    if let Some((body_lineno, _)) = new_statements.get(0) {
+        static_info.body.insert(parent_lineno, *body_lineno);
+    }
     static_info.statements.extend(new_statements);
     static_info.next_stmt.extend(new_next_stmts);
 
@@ -230,28 +235,32 @@ fn traverse_stmt<'a, 'b>(
                 .expect("decvars must be created for the scope before assignment")
                 .insert(var);
         }
-        _ => {} // Stmt::ClassDef(_) => todo!(),
-                // Stmt::Return(_) => todo!(),
-                // Stmt::Expr(_) => todo!(),
-                // Stmt::Pass(_) => todo!(),
-                // Stmt::Global(_) => todo!(),
-                // Stmt::Nonlocal(_) => todo!(),
-                // Stmt::Import(_) => todo!(),
-                // Stmt::ImportFrom(_) => todo!(),
-                // Stmt::Try(_) => todo!(),
-                // Stmt::TryStar(_) => todo!(),
-                // Stmt::Raise(_) => todo!(),
-                // Stmt::AugAssign(_) => unimplemented!(),
-                // Stmt::For(_) => unimplemented!(),
-                // Stmt::AsyncFunctionDef(_) => unimplemented!(),
-                // Stmt::AnnAssign(_) => unimplemented!(),
-                // Stmt::Assert(_) => unimplemented!(),
-                // Stmt::With(_) => unimplemented!(),
-                // Stmt::AsyncWith(_) => unimplemented!(),
-                // Stmt::AsyncFor(_) => unimplemented!(),
-                // Stmt::Match(_) => unimplemented!(),
-                // Stmt::TypeAlias(_) => unimplemented!(),
-                // Stmt::Delete(_) => unimplemented!(),
+        Stmt::ClassDef(ast::StmtClassDef {
+            name, bases, body, ..
+        }) => {}
+        Stmt::Return(_) | Stmt::Pass(_) => {}
+        _ => {
+            println!("{:?}", stmt);
+            unimplemented!();
+        } // Stmt::Expr(_) => todo!(),
+          // Stmt::Global(_) => todo!(),
+          // Stmt::Nonlocal(_) => todo!(),
+          // Stmt::Import(_) => todo!(),
+          // Stmt::ImportFrom(_) => todo!(),
+          // Stmt::Try(_) => todo!(),
+          // Stmt::TryStar(_) => todo!(),
+          // Stmt::Raise(_) => todo!(),
+          // Stmt::AugAssign(_) => unimplemented!(),
+          // Stmt::For(_) => unimplemented!(),
+          // Stmt::AsyncFunctionDef(_) => unimplemented!(),
+          // Stmt::AnnAssign(_) => unimplemented!(),
+          // Stmt::Assert(_) => unimplemented!(),
+          // Stmt::With(_) => unimplemented!(),
+          // Stmt::AsyncWith(_) => unimplemented!(),
+          // Stmt::AsyncFor(_) => unimplemented!(),
+          // Stmt::Match(_) => unimplemented!(),
+          // Stmt::TypeAlias(_) => unimplemented!(),
+          // Stmt::Delete(_) => unimplemented!(),
     }
 }
 
@@ -484,7 +493,7 @@ z = 4
     #[test]
     fn function_with_while() {
         let source = r#"
-def f(x ,y):
+def f(x, y):
     a = 2
     while True:
         break
@@ -497,7 +506,7 @@ def f(x ,y):
 x = f()
 y = x()
 
-print(y)
+pass
 "#;
         let ast = parse(source, Mode::Module, "<embedded>").unwrap();
         let line_index = LineIndex::from_source_text(source);

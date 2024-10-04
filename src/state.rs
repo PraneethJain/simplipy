@@ -91,21 +91,11 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     state.store = update(formal, val, &state.env, state.store)?;
                 }
 
-                let func_body_lineno = *if let Some((func_body_lineno, _)) = static_info
-                    .statements
-                    .range((
-                        std::ops::Bound::Excluded(func_lineno),
-                        std::ops::Bound::Unbounded,
-                    ))
-                    .next()
-                {
-                    func_body_lineno
-                } else {
-                    panic!("Function body cannot be empty");
-                };
-
                 Some(State {
-                    lineno: func_body_lineno,
+                    lineno: *static_info
+                        .body
+                        .get(&func_lineno)
+                        .expect("Function body cannot be empty"),
                     ..state
                 })
             } else {
