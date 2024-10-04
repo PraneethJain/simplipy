@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
+
 use rustpython_parser::ast::{self, Stmt};
 
 use crate::datatypes::{
-    ApplicationClosure, DefinitionClosure, Env, FlatEnv, Stack, StorableValue, Store,
+    ApplicationClosure, DefinitionClosure, Env, FlatEnv, Object, Stack, StorableValue, Store,
 };
 use crate::preprocess::Static;
 use crate::utils::{eval, lookup, update};
@@ -99,8 +101,39 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     ..state
                 })
             } else {
-                let val = eval(&value, &state.env, &state.store)?;
-                let new_store = update(var, val, &state.env, state.store)?;
+                let new_store = if let Some(class_name) = static_info.class.get(&lineno) {
+                    let mut lookup_env = state.env.clone();
+                    let class_object = lookup(class_name, &state.env, &state.store)?
+                        .clone()
+                        .as_object()
+                        .expect("Class must be stored as an object");
+                    let class_env = state
+                        .store
+                        .get(class_object.flat_env_addr)
+                        .and_then(|x| x.clone().as_flat_env())
+                        .expect("Class must have a flat environment initialized");
+                    lookup_env.push(class_env.clone());
+                    let val = eval(&value, &lookup_env, &state.store)?;
+
+                    if class_env.mapping.contains_key(var) {
+                        update(var, val, &lookup_env, state.store)?
+                    } else {
+                        let idx = state.store.len();
+                        state.store.push(val);
+                        state
+                            .store
+                            .get_mut(class_object.flat_env_addr)
+                            .and_then(|x| x.as_mut_flat_env())
+                            .and_then(|x| x.mapping.insert(var.to_string(), idx));
+
+                        state.store
+                    }
+                } else {
+                    let val = eval(&value, &state.env, &state.store)?;
+                    let new_store = update(var, val, &state.env, state.store)?;
+                    new_store
+                };
+
                 Some(State {
                     lineno: static_info.next_stmt[&lineno],
                     store: new_store,
@@ -165,7 +198,21 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 ..state
             })
         }
-        Stmt::ClassDef(_) => todo!(),
+        Stmt::ClassDef(ast::StmtClassDef { name, bases, .. }) => {
+            let class_env = FlatEnv::new(BTreeMap::new(), name.to_string());
+            let addr = state.store.len();
+            state.store.push(StorableValue::FlatEnv(class_env));
+            let val = StorableValue::Object(Object {
+                class: None,
+                flat_env_addr: addr,
+            });
+            let new_store = update(name, val, &state.env, state.store)?;
+            Some(State {
+                lineno: static_info.body[&lineno],
+                store: new_store,
+                ..state
+            })
+        }
         Stmt::Expr(_) => todo!(),
         Stmt::Pass(_) => todo!(),
         Stmt::Global(_) => todo!(),

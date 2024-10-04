@@ -29,6 +29,22 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
                 Constant::Complex { .. } => todo!(),
             }
         }
+        Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+            let obj_var = value
+                .as_name_expr()
+                .expect("Object fields must be accessed directly")
+                .id
+                .as_str();
+            let obj = lookup(obj_var, env, store)?
+                .clone()
+                .as_object()
+                .expect("Object must be stored as object type");
+            let obj_env = store
+                .get(obj.flat_env_addr)
+                .and_then(|x| x.clone().as_flat_env())
+                .expect("Object must have its environment initialized");
+            lookup(attr, &vec![obj_env], store).cloned()
+        }
         Expr::BinOp(ast::ExprBinOp {
             left, op, right, ..
         }) => {
@@ -106,7 +122,6 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
         Expr::Call(_) => todo!(),
         Expr::FormattedValue(_) => todo!(),
         Expr::JoinedStr(_) => todo!(),
-        Expr::Attribute(_) => todo!(),
         Expr::Subscript(_) => todo!(),
         Expr::Starred(_) => todo!(),
         Expr::List(_) => todo!(),

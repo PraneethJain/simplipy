@@ -111,3 +111,39 @@ pass
 
     assert_eq!(*a, StorableValue::Int(BigInt::from(4)));
 }
+
+#[test]
+fn test_class() {
+    let source = r#"
+x = 3
+y = 5
+
+class A:
+    x = x + 1
+    y = 6
+
+a = A.x + y
+b = A.y + x
+c = x
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    let a = lookup("a", &state.env, &state.store).unwrap();
+    let b = lookup("b", &state.env, &state.store).unwrap();
+    let c = lookup("c", &state.env, &state.store).unwrap();
+
+    assert_eq!(*a, StorableValue::Int(BigInt::from(9)));
+    assert_eq!(*b, StorableValue::Int(BigInt::from(9)));
+    assert_eq!(*c, StorableValue::Int(BigInt::from(3)));
+}

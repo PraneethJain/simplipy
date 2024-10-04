@@ -23,6 +23,12 @@ pub struct ApplicationClosure(pub usize, pub Env);
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionClosure(pub usize, pub Env);
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Object {
+    pub class: Option<usize>,
+    pub flat_env_addr: usize,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum StorableValue {
     Bottom,
@@ -32,6 +38,8 @@ pub enum StorableValue {
     Float(f64),
     String(String),
     DefinitionClosure(DefinitionClosure),
+    FlatEnv(FlatEnv),
+    Object(Object),
 }
 
 impl PartialOrd for StorableValue {
@@ -169,6 +177,38 @@ impl StorableValue {
     pub fn as_closure(self) -> Option<DefinitionClosure> {
         if let StorableValue::DefinitionClosure(closure) = self {
             Some(closure)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_object(self) -> Option<Object> {
+        if let StorableValue::Object(object) = self {
+            Some(object)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_flat_env(self) -> Option<FlatEnv> {
+        if let StorableValue::FlatEnv(flat_env) = self {
+            Some(flat_env)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_object(&mut self) -> Option<&mut Object> {
+        if let StorableValue::Object(object) = self {
+            Some(object)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_mut_flat_env(&mut self) -> Option<&mut FlatEnv> {
+        if let StorableValue::FlatEnv(flat_env) = self {
+            Some(flat_env)
         } else {
             None
         }
