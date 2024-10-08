@@ -1,8 +1,6 @@
 use rustpython_parser::{ast::source_code::LineIndex, parse, Mode};
 use std::{env, fs};
 
-
-
 use simplipy::app::App;
 use simplipy::preprocess::preprocess_module;
 

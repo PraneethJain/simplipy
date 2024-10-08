@@ -1,4 +1,4 @@
-use crate::datatypes::{DefinitionClosure, StorableValue, State};
+use crate::datatypes::{DefinitionClosure, State, StorableValue};
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick};
 use ratatui::layout::Direction;

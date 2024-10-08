@@ -233,7 +233,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                         state.store,
                     )?;
                 } else {
-                    // Not in a class
                     state.store =
                         assign_val_in_lexical_context(&targets[0], val, &ret_env, state.store)?;
                 }
