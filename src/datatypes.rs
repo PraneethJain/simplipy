@@ -3,9 +3,14 @@ use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
 pub type Env = Vec<FlatEnv>;
-pub type Stack = Vec<ApplicationClosure>;
+pub type Stack = Vec<Context>;
 pub type Store = Vec<StorableValue>;
-pub type ClassEnvs = Vec<(usize, FlatEnv)>;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Context {
+    Lexical(usize, Env),
+    Class(usize, FlatEnv),
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlatEnv {
@@ -19,8 +24,6 @@ impl FlatEnv {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ApplicationClosure(pub usize, pub Env, pub ClassEnvs);
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionClosure(pub usize, pub Env);
 
@@ -49,7 +52,6 @@ pub struct State {
     pub env: Env,
     pub stack: Stack,
     pub store: Store,
-    pub class_envs: ClassEnvs,
 }
 
 impl PartialOrd for StorableValue {
