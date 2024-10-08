@@ -24,9 +24,6 @@ impl FlatEnv {
     }
 }
 
-// #[derive(Debug, Clone, PartialEq)]
-// pub struct DefinitionClosure(pub usize, pub Env);
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object {
     pub class: Option<usize>,
