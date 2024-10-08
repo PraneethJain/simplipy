@@ -4,7 +4,10 @@ use rustpython_parser::ast::{self, Stmt};
 
 use crate::datatypes::{Context, DefinitionClosure, FlatEnv, Object, State, StorableValue};
 use crate::preprocess::Static;
-use crate::utils::{eval, lookup, update, update_obj};
+use crate::utils::{
+    assign_in_class_context, assign_in_lexical_context, assign_val_in_class_context,
+    assign_val_in_lexical_context, eval, lookup, update, update_class_env,
+};
 
 pub fn init_state(static_info: &Static) -> State {
     State {
@@ -154,57 +157,16 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 }
             } else {
                 if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
-                    // In some class
-                    let mut lookup_env = state.env.clone();
-                    lookup_env.push(class_env.clone());
-                    let val = eval(value, &lookup_env, &state.store)?;
-
-                    match &targets[0] {
-                        ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
-                            let obj = lookup(
-                                value.as_name_expr().unwrap().id.as_str(),
-                                &lookup_env,
-                                &state.store,
-                            )?
-                            .as_object()
-                            .unwrap()
-                            .clone();
-                            state.store = update_obj(attr.to_string(), val, &obj, state.store)?;
-                        }
-                        ast::Expr::Name(name) => {
-                            class_env
-                                .mapping
-                                .entry(name.id.to_string())
-                                .and_modify(|idx| {
-                                    state.store[*idx] = val.clone();
-                                })
-                                .or_insert_with(|| {
-                                    state.store.push(val);
-                                    state.store.len() - 1
-                                });
-                        }
-                        _ => unimplemented!(),
-                    }
+                    state.store = assign_in_class_context(
+                        &targets[0],
+                        value,
+                        &state.env,
+                        class_env,
+                        state.store,
+                    )?;
                 } else {
-                    // Not in a class
-                    let val = eval(value, &state.env, &state.store)?;
-                    match &targets[0] {
-                        ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
-                            let obj = lookup(
-                                value.as_name_expr().unwrap().id.as_str(),
-                                &state.env,
-                                &state.store,
-                            )?
-                            .as_object()
-                            .unwrap()
-                            .clone();
-                            state.store = update_obj(attr.to_string(), val, &obj, state.store)?;
-                        }
-                        ast::Expr::Name(name) => {
-                            state.store = update(&name.id, val, &state.env, state.store)?;
-                        }
-                        _ => unimplemented!(),
-                    }
+                    state.store =
+                        assign_in_lexical_context(&targets[0], value, &state.env, state.store)?;
                 }
 
                 State {
@@ -236,16 +198,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 StorableValue::DefinitionClosure(DefinitionClosure(lineno, state.env.clone()));
 
             if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
-                class_env
-                    .mapping
-                    .entry(name.to_string())
-                    .and_modify(|idx| {
-                        state.store[*idx] = closure.clone();
-                    })
-                    .or_insert_with(|| {
-                        state.store.push(closure);
-                        state.store.len() - 1
-                    });
+                state.store = update_class_env(name, closure, class_env, state.store);
             } else {
                 state.store = update(name, closure, &state.env, state.store)?;
             }
@@ -270,55 +223,19 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     .clone();
 
                 if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
-                    // In some class
-
-                    match &targets[0] {
-                        ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
-                            let mut lookup_env = state.env.clone();
-                            lookup_env.push(class_env.clone());
-                            let obj = lookup(
-                                value.as_name_expr().unwrap().id.as_str(),
-                                &lookup_env,
-                                &state.store,
-                            )?
-                            .as_object()
-                            .unwrap()
-                            .clone();
-                            state.store = update_obj(attr.to_string(), val, &obj, state.store)?;
-                        }
-                        ast::Expr::Name(name) => {
-                            class_env
-                                .mapping
-                                .entry(name.id.to_string())
-                                .and_modify(|idx| {
-                                    state.store[*idx] = val.clone();
-                                })
-                                .or_insert_with(|| {
-                                    state.store.push(val);
-                                    state.store.len() - 1
-                                });
-                        }
-                        _ => unimplemented!(),
-                    }
+                    let mut lookup_env = ret_env.clone();
+                    lookup_env.push(class_env.clone());
+                    state.store = assign_val_in_class_context(
+                        &targets[0],
+                        val,
+                        &lookup_env,
+                        class_env,
+                        state.store,
+                    )?;
                 } else {
                     // Not in a class
-                    match &targets[0] {
-                        ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
-                            let obj = lookup(
-                                value.as_name_expr().unwrap().id.as_str(),
-                                &state.env,
-                                &state.store,
-                            )?
-                            .as_object()
-                            .unwrap()
-                            .clone();
-                            state.store = update_obj(attr.to_string(), val, &obj, state.store)?;
-                        }
-                        ast::Expr::Name(name) => {
-                            state.store = update(&name.id, val, &ret_env, state.store)?;
-                        }
-                        _ => unimplemented!(),
-                    }
+                    state.store =
+                        assign_val_in_lexical_context(&targets[0], val, &ret_env, state.store)?;
                 }
 
                 State {

@@ -234,9 +234,11 @@ pass
 fn test_class_scope() {
     let source = r#"
 class B:
-    x = 3
+    x = 10
 
 class A:
+    a = B.x
+    B.x = 3
     class B:
         x = 4
         y = B.x
@@ -245,6 +247,7 @@ class A:
 
 a = A.c
 b = A.d
+c = A.a
 
 pass
 "#;
@@ -261,13 +264,15 @@ pass
 
     let a = lookup("a", &state.env, &state.store).unwrap();
     let b = lookup("b", &state.env, &state.store).unwrap();
+    let c = lookup("c", &state.env, &state.store).unwrap();
 
     assert_eq!(*a, StorableValue::Int(BigInt::from(4)));
     assert_eq!(*b, StorableValue::Int(BigInt::from(3)));
+    assert_eq!(*c, StorableValue::Int(BigInt::from(10)));
 }
 
 #[test]
-fn nested_classes() {
+fn test_nested_classes() {
     let source = r#"
 class A:
     class B:
@@ -276,6 +281,10 @@ class A:
 x = A.B
 y = x.C
 z = y.x
+
+x.bvar = 10
+B = A.B
+w = B.bvar
 
 pass
 "#;
@@ -290,6 +299,8 @@ pass
     }
 
     let z = lookup("z", &state.env, &state.store).unwrap();
+    let w = lookup("w", &state.env, &state.store).unwrap();
 
     assert_eq!(*z, StorableValue::Int(BigInt::from(3)));
+    assert_eq!(*w, StorableValue::Int(BigInt::from(10)));
 }

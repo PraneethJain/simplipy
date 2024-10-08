@@ -1,4 +1,4 @@
-use rustpython_parser::ast::{self, Expr, ExprAttribute};
+use rustpython_parser::ast::{self, Expr, Identifier};
 
 use crate::datatypes::{Env, FlatEnv, Object, StorableValue, Store};
 
@@ -157,99 +157,98 @@ pub fn update_obj(
     Some(store)
 }
 
-// pub fn assign(
-//     target: &Expr,
-//     val: StorableValue,
-//     env: &Env,
-//     store: Store,
-//     mut obj: Option<Object>,
-// ) -> Option<Store> {
-//     let var = match target {
-//         Expr::Attribute(ExprAttribute { value, attr, .. }) => {
-//             obj = lookup(value.as_name_expr().unwrap().id.as_str(), env, &store)?
-//                 .clone()
-//                 .as_object();
+pub fn update_class_env(
+    name: &Identifier,
+    val: StorableValue,
+    class_env: &mut FlatEnv,
+    mut store: Store,
+) -> Store {
+    class_env
+        .mapping
+        .entry(name.to_string())
+        .and_modify(|idx| {
+            store[*idx] = val.clone();
+        })
+        .or_insert_with(|| {
+            store.push(val);
+            store.len() - 1
+        });
 
-//             attr.to_string()
-//         }
-//         Expr::Name(name) => name.id.to_string(),
-//         _ => unimplemented!(),
-//     };
+    store
+}
 
-//     let new_store = if let Some(obj) = obj {
-//         update_obj(var, val, &obj, store)?
-//     } else {
-//         update(&var, val, env, store)?
-//     };
+pub fn assign_in_class_context(
+    var: &Expr,
+    value: &Expr,
+    env: &Env,
+    class_env: &mut FlatEnv,
+    store: Store,
+) -> Option<Store> {
+    let mut lookup_env = env.clone();
+    lookup_env.push(class_env.clone());
+    let val = eval(value, &lookup_env, &store)?;
 
-//     Some(new_store)
-// }
+    assign_val_in_class_context(var, val, &lookup_env, class_env, store)
+}
 
-// pub fn assign_expr(
-//     target: &Expr,
-//     value: Expr,
-//     env: &Env,
-//     store: Store,
-//     class: Option<&mut (usize, FlatEnv)>,
-// ) -> Option<Store> {
-//     if let Some(class) = class {
-//         let mut lookup_env = env.clone();
-//         lookup_env.push(class.1);
-//         let val = eval(&value, &lookup_env, &store)?;
-//         assign(target, val, &lookup_env, store, Some(class_object))
-//     } else {
-//         let val = eval(&value, env, &store)?;
-//         assign(target, val, env, store, None)
-//     }
-// }
+pub fn assign_val_in_class_context(
+    var: &Expr,
+    val: StorableValue,
+    lookup_env: &Env,
+    class_env: &mut FlatEnv,
+    mut store: Store,
+) -> Option<Store> {
+    match var {
+        ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+            let obj = lookup(
+                value.as_name_expr().unwrap().id.as_str(),
+                &lookup_env,
+                &store,
+            )?
+            .as_object()
+            .unwrap()
+            .clone();
+            store = update_obj(attr.to_string(), val, &obj, store)?;
+        }
+        ast::Expr::Name(name) => store = update_class_env(&name.id, val, class_env, store),
+        _ => unimplemented!(),
+    }
 
-// pub fn assign_val(
-//     target: &Expr,
-//     val: StorableValue,
-//     env: &Env,
-//     store: Store,
-//     class: Option<&&str>,
-// ) -> Option<Store> {
-//     if let Some(class_name) = class {
-//         let mut lookup_env = env.clone();
-//         let class_object = lookup(class_name, env, &store)?
-//             .clone()
-//             .as_object()
-//             .expect("Class must be stored as an object");
-//         let class_env = store
-//             .get(class_object.flat_env_addr)
-//             .and_then(|x| x.clone().as_flat_env())
-//             .expect("Class must have a flat environment initialized");
-//         lookup_env.push(class_env);
-//         assign(target, val, &lookup_env, store, Some(class_object))
-//     } else {
-//         assign(target, val, env, store, None)
-//     }
-// }
+    Some(store)
+}
 
-// pub fn define(
-//     name: &str,
-//     val: StorableValue,
-//     env: &Env,
-//     store: Store,
-//     class: Option<&&str>,
-// ) -> Option<Store> {
-//     if let Some(class_name) = class {
-//         let mut lookup_env = env.clone();
-//         let class_object = lookup(class_name, env, &store)?
-//             .as_object()
-//             .cloned()
-//             .expect("Class must be stored as an object");
-//         let class_env = store
-//             .get(class_object.flat_env_addr)
-//             .and_then(|x| x.as_flat_env().cloned())
-//             .expect("Class must have a flat environment initialized");
-//         lookup_env.push(class_env);
-//         update_obj(name.to_string(), val, &class_object, store)
-//     } else {
-//         update(name, val, env, store)
-//     }
-// }
+pub fn assign_in_lexical_context(
+    var: &Expr,
+    value: &Expr,
+    env: &Env,
+    store: Store,
+) -> Option<Store> {
+    let val = eval(value, env, &store)?;
+    assign_val_in_lexical_context(var, val, env, store)
+}
+
+pub fn assign_val_in_lexical_context(
+    var: &Expr,
+    val: StorableValue,
+    env: &Env,
+    mut store: Store,
+) -> Option<Store> {
+    match var {
+        ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+            let obj = lookup(value.as_name_expr().unwrap().id.as_str(), &env, &store)?
+                .as_object()
+                .unwrap()
+                .clone();
+            store = update_obj(attr.to_string(), val, &obj, store)?;
+        }
+        ast::Expr::Name(name) => {
+            store = update(&name.id, val, env, store)?;
+        }
+        _ => unimplemented!(),
+    }
+
+    Some(store)
+}
 
 #[cfg(test)]
 mod test {
