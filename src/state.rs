@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use rustpython_parser::ast::{self, Stmt};
 
-use crate::datatypes::{Context, DefinitionClosure, FlatEnv, Object, State, StorableValue};
+use crate::datatypes::{Context, FlatEnv, Object, State, StorableValue};
 use crate::preprocess::Static;
 use crate::utils::{
     assign_in_class_context, assign_in_lexical_context, assign_val_in_class_context,
@@ -38,7 +38,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             if let Some(ast::ExprCall { func, args, .. }) = value.as_call_expr() {
                 let func_name = func.as_name_expr()?.id.as_str();
                 match lookup(func_name, &state.env, &state.store)?.clone() {
-                    StorableValue::DefinitionClosure(DefinitionClosure(func_lineno, func_env)) => {
+                    StorableValue::DefinitionClosure(func_lineno, func_env) => {
                         let func_stmt =
                             static_info.statements[&func_lineno].as_function_def_stmt()?;
                         let formals = func_stmt
@@ -94,63 +94,64 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             .and_then(|x| x.as_flat_env().cloned())
                             .expect("Object must have an initialized flat environment");
 
-                        let DefinitionClosure(func_lineno, func_env) =
-                            lookup("__init__", &vec![class_env], &state.store)
-                                .and_then(|x| x.clone().closure())
-                                .expect("Class must have a __init__ function");
+                        if let Some(StorableValue::DefinitionClosure(func_lineno, func_env)) =
+                            lookup("__init__", &vec![class_env], &state.store).cloned()
+                        {
+                            let func_stmt =
+                                static_info.statements[&func_lineno].as_function_def_stmt()?;
 
-                        let func_stmt =
-                            static_info.statements[&func_lineno].as_function_def_stmt()?;
-
-                        let formals = func_stmt
-                            .args
-                            .args
-                            .iter()
-                            .map(|x| x.def.arg.as_str())
-                            .collect::<Vec<_>>();
-
-                        if func_stmt.args.args.len() != args.len() + 1 {
-                            panic!("Function call with wrong number of arguments");
-                        }
-
-                        let mut vals = args
-                            .iter()
-                            .map(|x| eval(x, &state.env, &state.store))
-                            .collect::<Option<Vec<_>>>()?;
-
-                        let obj_env = FlatEnv::new(BTreeMap::new(), "".to_string());
-                        state.store.push(StorableValue::FlatEnv(obj_env));
-                        let obj = Object {
-                            class: Some(flat_env_addr),
-                            flat_env_addr: state.store.len() - 1,
-                        };
-                        vals.insert(0, StorableValue::Object(obj));
-
-                        let return_closure = Context::Lexical(lineno, state.env);
-                        state.stack.push(return_closure);
-
-                        let n = state.store.len();
-                        state.env = func_env;
-                        state.env.push(FlatEnv::new(
-                            static_info.decvars[&func_lineno]
+                            let formals = func_stmt
+                                .args
+                                .args
                                 .iter()
-                                .enumerate()
-                                .map(|(i, x)| (x.to_string(), n + i))
-                                .collect(),
-                            func_name.to_string(),
-                        ));
-                        state.store.extend(vec![
-                            StorableValue::Bottom;
-                            static_info.decvars[&func_lineno].len()
-                        ]);
+                                .map(|x| x.def.arg.as_str())
+                                .collect::<Vec<_>>();
 
-                        for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-                            state.store = update(formal, val, &state.env, state.store)?;
-                        }
+                            if func_stmt.args.args.len() != args.len() + 1 {
+                                panic!("Function call with wrong number of arguments");
+                            }
 
-                        State {
-                            lineno: static_info.block[&func_lineno].0,
-                            ..state
+                            let mut vals = args
+                                .iter()
+                                .map(|x| eval(x, &state.env, &state.store))
+                                .collect::<Option<Vec<_>>>()?;
+
+                            let obj_env = FlatEnv::new(BTreeMap::new(), "".to_string());
+                            state.store.push(StorableValue::FlatEnv(obj_env));
+                            let obj = Object {
+                                class: Some(flat_env_addr),
+                                flat_env_addr: state.store.len() - 1,
+                            };
+                            vals.insert(0, StorableValue::Object(obj));
+
+                            let return_closure = Context::Lexical(lineno, state.env);
+                            state.stack.push(return_closure);
+
+                            let n = state.store.len();
+                            state.env = func_env;
+                            state.env.push(FlatEnv::new(
+                                static_info.decvars[&func_lineno]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, x)| (x.to_string(), n + i))
+                                    .collect(),
+                                func_name.to_string(),
+                            ));
+                            state.store.extend(vec![
+                                StorableValue::Bottom;
+                                static_info.decvars[&func_lineno].len()
+                            ]);
+
+                            for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
+                                state.store = update(formal, val, &state.env, state.store)?;
+                            }
+
+                            State {
+                                lineno: static_info.block[&func_lineno].0,
+                                ..state
+                            }
+                        } else {
+                            panic!("Class must have a __init__ function")
                         }
                     }
                     _ => panic!("Expected callable"),
@@ -194,8 +195,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             ..state
         },
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) => {
-            let closure =
-                StorableValue::DefinitionClosure(DefinitionClosure(lineno, state.env.clone()));
+            let closure = StorableValue::DefinitionClosure(lineno, state.env.clone());
 
             if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
                 state.store = update_class_env(name, closure, class_env, state.store);

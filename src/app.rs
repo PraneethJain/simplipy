@@ -1,4 +1,4 @@
-use crate::datatypes::{DefinitionClosure, State, StorableValue};
+use crate::datatypes::{State, StorableValue};
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick};
 use ratatui::layout::Direction;
@@ -184,7 +184,7 @@ impl<'a> Widget for &App<'_> {
                 .iter()
                 .enumerate()
                 .flat_map(|(i, val)| {
-                    if let StorableValue::DefinitionClosure(DefinitionClosure(lineno, env)) = val {
+                    if let StorableValue::DefinitionClosure(lineno, env) = val {
                         if self.expand_closures {
                             let mut v = vec![Line::from(
                                 format!("{}: ", i).bold().blue()

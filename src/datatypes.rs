@@ -24,8 +24,8 @@ impl FlatEnv {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DefinitionClosure(pub usize, pub Env);
+// #[derive(Debug, Clone, PartialEq)]
+// pub struct DefinitionClosure(pub usize, pub Env);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object {
@@ -41,7 +41,7 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    DefinitionClosure(DefinitionClosure),
+    DefinitionClosure(usize, Env),
     FlatEnv(FlatEnv),
     Object(Object),
 }
@@ -181,14 +181,6 @@ impl StorableValue {
     pub fn bool(self) -> Option<bool> {
         if let StorableValue::Bool(bool_val) = self {
             Some(bool_val)
-        } else {
-            None
-        }
-    }
-
-    pub fn closure(self) -> Option<DefinitionClosure> {
-        if let StorableValue::DefinitionClosure(closure) = self {
-            Some(closure)
         } else {
             None
         }
