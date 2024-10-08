@@ -1,6 +1,6 @@
-use rustpython_parser::ast::{self, Expr};
+use rustpython_parser::ast::{self, Expr, ExprAttribute};
 
-use crate::datatypes::{Env, StorableValue, Store};
+use crate::datatypes::{Env, FlatEnv, Object, StorableValue, Store};
 
 pub fn env_lookup(var: &str, env: &Env) -> Option<usize> {
     env.iter()
@@ -36,12 +36,11 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
                 .id
                 .as_str();
             let obj = lookup(obj_var, env, store)?
-                .clone()
                 .as_object()
                 .expect("Object must be stored as object type");
             let obj_env = store
                 .get(obj.flat_env_addr)
-                .and_then(|x| x.clone().as_flat_env())
+                .and_then(|x| x.as_flat_env().cloned())
                 .expect("Object must have its environment initialized");
             lookup(attr, &vec![obj_env], store).cloned()
         }
@@ -99,7 +98,7 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
         Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) => {
             let vals = values
                 .iter()
-                .map(|x| eval(x, env, store).and_then(|x| x.as_bool()))
+                .map(|x| eval(x, env, store).and_then(|x| x.bool()))
                 .collect::<Option<Vec<_>>>()?;
             Some(StorableValue::Bool(match op {
                 ast::BoolOp::And => vals.iter().all(|&x| x),
@@ -137,6 +136,120 @@ pub fn update(var: &str, val: StorableValue, env: &Env, mut store: Store) -> Opt
 
     Some(store)
 }
+
+pub fn update_obj(
+    var: String,
+    val: StorableValue,
+    obj: &Object,
+    mut store: Store,
+) -> Option<Store> {
+    let mut obj_env = store.get(obj.flat_env_addr)?.as_flat_env().cloned()?;
+    obj_env
+        .mapping
+        .entry(var)
+        .and_modify(|&mut x| store[x] = val.clone())
+        .or_insert_with(|| {
+            store.push(val);
+            store.len() - 1
+        });
+    store[obj.flat_env_addr] = StorableValue::FlatEnv(obj_env);
+
+    Some(store)
+}
+
+// pub fn assign(
+//     target: &Expr,
+//     val: StorableValue,
+//     env: &Env,
+//     store: Store,
+//     mut obj: Option<Object>,
+// ) -> Option<Store> {
+//     let var = match target {
+//         Expr::Attribute(ExprAttribute { value, attr, .. }) => {
+//             obj = lookup(value.as_name_expr().unwrap().id.as_str(), env, &store)?
+//                 .clone()
+//                 .as_object();
+
+//             attr.to_string()
+//         }
+//         Expr::Name(name) => name.id.to_string(),
+//         _ => unimplemented!(),
+//     };
+
+//     let new_store = if let Some(obj) = obj {
+//         update_obj(var, val, &obj, store)?
+//     } else {
+//         update(&var, val, env, store)?
+//     };
+
+//     Some(new_store)
+// }
+
+// pub fn assign_expr(
+//     target: &Expr,
+//     value: Expr,
+//     env: &Env,
+//     store: Store,
+//     class: Option<&mut (usize, FlatEnv)>,
+// ) -> Option<Store> {
+//     if let Some(class) = class {
+//         let mut lookup_env = env.clone();
+//         lookup_env.push(class.1);
+//         let val = eval(&value, &lookup_env, &store)?;
+//         assign(target, val, &lookup_env, store, Some(class_object))
+//     } else {
+//         let val = eval(&value, env, &store)?;
+//         assign(target, val, env, store, None)
+//     }
+// }
+
+// pub fn assign_val(
+//     target: &Expr,
+//     val: StorableValue,
+//     env: &Env,
+//     store: Store,
+//     class: Option<&&str>,
+// ) -> Option<Store> {
+//     if let Some(class_name) = class {
+//         let mut lookup_env = env.clone();
+//         let class_object = lookup(class_name, env, &store)?
+//             .clone()
+//             .as_object()
+//             .expect("Class must be stored as an object");
+//         let class_env = store
+//             .get(class_object.flat_env_addr)
+//             .and_then(|x| x.clone().as_flat_env())
+//             .expect("Class must have a flat environment initialized");
+//         lookup_env.push(class_env);
+//         assign(target, val, &lookup_env, store, Some(class_object))
+//     } else {
+//         assign(target, val, env, store, None)
+//     }
+// }
+
+// pub fn define(
+//     name: &str,
+//     val: StorableValue,
+//     env: &Env,
+//     store: Store,
+//     class: Option<&&str>,
+// ) -> Option<Store> {
+//     if let Some(class_name) = class {
+//         let mut lookup_env = env.clone();
+//         let class_object = lookup(class_name, env, &store)?
+//             .as_object()
+//             .cloned()
+//             .expect("Class must be stored as an object");
+//         let class_env = store
+//             .get(class_object.flat_env_addr)
+//             .and_then(|x| x.as_flat_env().cloned())
+//             .expect("Class must have a flat environment initialized");
+//         lookup_env.push(class_env);
+//         update_obj(name.to_string(), val, &class_object, store)
+//     } else {
+//         update(name, val, env, store)
+//     }
+// }
 
 #[cfg(test)]
 mod test {

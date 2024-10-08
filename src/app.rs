@@ -1,6 +1,6 @@
-use crate::datatypes::{DefinitionClosure, StorableValue};
+use crate::datatypes::{DefinitionClosure, StorableValue, State};
 use crate::preprocess::Static;
-use crate::state::{init_state, is_fixed_point, tick, State};
+use crate::state::{init_state, is_fixed_point, tick};
 use ratatui::layout::Direction;
 use ratatui::{
     buffer::Buffer,

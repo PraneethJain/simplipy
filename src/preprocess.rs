@@ -10,18 +10,6 @@ macro_rules! get_current_line {
     };
 }
 
-#[derive(Debug, Clone, Copy)]
-enum Scope {
-    Class(usize),
-    Function(usize),
-}
-
-impl Default for Scope {
-    fn default() -> Self {
-        Self::Function(0)
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct Static<'a> {
     pub statements: BTreeMap<usize, &'a Stmt>,
@@ -29,11 +17,9 @@ pub struct Static<'a> {
     pub true_stmt: BTreeMap<usize, usize>,
     pub false_stmt: BTreeMap<usize, usize>,
     pub decvars: BTreeMap<usize, BTreeSet<&'a str>>,
-    pub decfields: BTreeMap<usize, BTreeSet<&'a str>>,
-    pub class: BTreeMap<usize, &'a str>,
-    pub body: BTreeMap<usize, usize>,
+    pub block: BTreeMap<usize, (usize, usize)>,
     parent_map: BTreeMap<usize, usize>,
-    cur_scope_lineno: Scope,
+    cur_scope_lineno: usize,
 }
 
 pub fn preprocess_module<'a>(
@@ -100,20 +86,21 @@ fn traverse_body<'a, 'b>(
     static_info: &'b mut Static<'a>,
 ) {
     let (new_statements, new_next_stmts) = new_block(body, line_index, source);
-    if let Some((body_lineno, _)) = new_statements.get(0) {
-        static_info.body.insert(parent_lineno, *body_lineno);
-    }
-    static_info.statements.extend(new_statements);
-    static_info.next_stmt.extend(new_next_stmts);
 
-    if let Some(&parent_next_lineno) = static_info.next_stmt.get(&parent_lineno) {
-        if let Some(last_stmt) = body.last() {
-            static_info.next_stmt.insert(
-                get_current_line!(line_index, last_stmt, source),
-                parent_next_lineno,
-            );
+    if !new_statements.is_empty() {
+        let start_lineno = new_statements.first().unwrap().0;
+        let end_lineno = new_statements.last().unwrap().0;
+        static_info
+            .block
+            .insert(parent_lineno, (start_lineno, end_lineno));
+
+        if let Some(&parent_next_lineno) = static_info.next_stmt.get(&parent_lineno) {
+            static_info.next_stmt.insert(end_lineno, parent_next_lineno);
         }
     }
+
+    static_info.statements.extend(new_statements);
+    static_info.next_stmt.extend(new_next_stmts);
 
     for inner_stmt in body {
         let inner_lineno = get_current_line!(line_index, inner_stmt, source);
@@ -217,24 +204,13 @@ fn traverse_stmt<'a, 'b>(
         Stmt::FunctionDef(ast::StmtFunctionDef {
             name, args, body, ..
         }) => {
-            match static_info.cur_scope_lineno {
-                Scope::Class(class_lineno) => {
-                    static_info
-                        .decfields
-                        .get_mut(&class_lineno)
-                        .expect("decfields must be created for the class before assignment")
-                        .insert(name);
-                }
-                Scope::Function(func_lineno) => {
-                    static_info
-                        .decvars
-                        .get_mut(&func_lineno)
-                        .expect("decvars must be created for the scope before assignment")
-                        .insert(name);
-                }
-            }
+            static_info
+                .decvars
+                .get_mut(&static_info.cur_scope_lineno)
+                .expect("decvars must be created for the scope before assignment")
+                .insert(name);
             let old_scope_lineno = static_info.cur_scope_lineno;
-            static_info.cur_scope_lineno = Scope::Function(cur_lineno);
+            static_info.cur_scope_lineno = cur_lineno;
 
             static_info.decvars.insert(
                 cur_lineno,
@@ -254,53 +230,26 @@ fn traverse_stmt<'a, 'b>(
                     .expect("Expected simple assignment")
                     .id
                     .as_str();
-                match static_info.cur_scope_lineno {
-                    Scope::Class(class_lineno) => {
-                        static_info
-                            .decfields
-                            .get_mut(&class_lineno)
-                            .expect("decfields must be created for the scope before assignment")
-                            .insert(var);
-                    }
-                    Scope::Function(func_lineno) => {
-                        static_info
-                            .decvars
-                            .get_mut(&func_lineno)
-                            .expect("decvars must be created for the scope before assignment")
-                            .insert(var);
-                    }
-                }
+
+                static_info
+                    .decvars
+                    .get_mut(&static_info.cur_scope_lineno)
+                    .expect("decvars must be created for the scope before assignment")
+                    .insert(var);
             }
         }
         Stmt::ClassDef(ast::StmtClassDef {
             name, bases, body, ..
         }) => {
-            match static_info.cur_scope_lineno {
-                Scope::Class(class_lineno) => {
-                    static_info
-                        .decfields
-                        .get_mut(&class_lineno)
-                        .expect("decfields must be created for the scope before assignment")
-                        .insert(name);
-                }
-                Scope::Function(func_lineno) => {
-                    static_info
-                        .decvars
-                        .get_mut(&func_lineno)
-                        .expect("decvars must be created for the scope before assignment")
-                        .insert(name);
-                }
-            }
-
-            for stmt in body {
-                static_info
-                    .class
-                    .insert(get_current_line!(line_index, stmt, source), name);
-            }
+            static_info
+                .decvars
+                .get_mut(&static_info.cur_scope_lineno)
+                .expect("decvars must be created for the scope before assignment")
+                .insert(name);
 
             let old_scope_lineno = static_info.cur_scope_lineno;
-            static_info.cur_scope_lineno = Scope::Class(cur_lineno);
-            static_info.decfields.insert(cur_lineno, BTreeSet::new());
+            static_info.cur_scope_lineno = cur_lineno;
+            static_info.decvars.insert(cur_lineno, BTreeSet::new());
             traverse_body(cur_lineno, body, line_index, source, static_info);
             static_info.cur_scope_lineno = old_scope_lineno;
         }
@@ -616,17 +565,10 @@ pass
         let ast = parse(source, Mode::Module, "<embedded>").unwrap();
         let line_index = LineIndex::from_source_text(source);
         let module = ast.as_module().unwrap();
-        let Static {
-            class,
-            decfields,
-            decvars,
-            ..
-        } = preprocess_module(module, &line_index, &source);
+        let Static { decvars, .. } = preprocess_module(module, &line_index, &source);
 
         assert_eq!(decvars[&0], BTreeSet::from(["x", "A", "y"]));
-        assert_eq!(decfields[&3], BTreeSet::from(["x", "y"]));
-        assert_eq!(class[&4], "A");
-        assert_eq!(class[&5], "A");
+        assert_eq!(decvars[&3], BTreeSet::from(["x", "y"]));
     }
 
     #[test]
@@ -653,24 +595,15 @@ pass
         let ast = parse(source, Mode::Module, "<embedded>").unwrap();
         let line_index = LineIndex::from_source_text(source);
         let module = ast.as_module().unwrap();
-        let Static {
-            class,
-            decfields,
-            decvars,
-            ..
-        } = preprocess_module(module, &line_index, &source);
+        let Static { decvars, .. } = preprocess_module(module, &line_index, &source);
 
         assert_eq!(decvars[&0], BTreeSet::from(["f", "z"]));
         assert_eq!(decvars[&2], BTreeSet::from(["x", "y", "A"]));
         assert_eq!(decvars[&7], BTreeSet::from(["self"]));
         assert_eq!(decvars[&11], BTreeSet::from(["self"]));
         assert_eq!(
-            decfields[&3],
+            decvars[&3],
             BTreeSet::from(["x", "y", "__init__", "some_method"])
         );
-        assert_eq!(class[&4], "A");
-        assert_eq!(class[&5], "A");
-        assert_eq!(class[&7], "A");
-        assert_eq!(class[&11], "A");
     }
 }

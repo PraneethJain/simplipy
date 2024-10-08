@@ -5,6 +5,7 @@ use std::ops::{Add, Div, Mul, Rem, Sub};
 pub type Env = Vec<FlatEnv>;
 pub type Stack = Vec<ApplicationClosure>;
 pub type Store = Vec<StorableValue>;
+pub type ClassEnvs = Vec<(usize, FlatEnv)>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlatEnv {
@@ -19,7 +20,7 @@ impl FlatEnv {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ApplicationClosure(pub usize, pub Env);
+pub struct ApplicationClosure(pub usize, pub Env, pub ClassEnvs);
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionClosure(pub usize, pub Env);
 
@@ -40,6 +41,15 @@ pub enum StorableValue {
     DefinitionClosure(DefinitionClosure),
     FlatEnv(FlatEnv),
     Object(Object),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct State {
+    pub lineno: usize,
+    pub env: Env,
+    pub stack: Stack,
+    pub store: Store,
+    pub class_envs: ClassEnvs,
 }
 
 impl PartialOrd for StorableValue {
@@ -166,7 +176,7 @@ impl StorableValue {
         }
     }
 
-    pub fn as_bool(self) -> Option<bool> {
+    pub fn bool(self) -> Option<bool> {
         if let StorableValue::Bool(bool_val) = self {
             Some(bool_val)
         } else {
@@ -174,7 +184,7 @@ impl StorableValue {
         }
     }
 
-    pub fn as_closure(self) -> Option<DefinitionClosure> {
+    pub fn closure(self) -> Option<DefinitionClosure> {
         if let StorableValue::DefinitionClosure(closure) = self {
             Some(closure)
         } else {
@@ -182,7 +192,7 @@ impl StorableValue {
         }
     }
 
-    pub fn as_object(self) -> Option<Object> {
+    pub fn as_object(&self) -> Option<&Object> {
         if let StorableValue::Object(object) = self {
             Some(object)
         } else {
@@ -190,7 +200,7 @@ impl StorableValue {
         }
     }
 
-    pub fn as_flat_env(self) -> Option<FlatEnv> {
+    pub fn as_flat_env(&self) -> Option<&FlatEnv> {
         if let StorableValue::FlatEnv(flat_env) = self {
             Some(flat_env)
         } else {
