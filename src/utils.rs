@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use rustpython_parser::ast::{self, Expr, Identifier};
 
 use crate::datatypes::{Env, FlatEnv, Object, StorableValue, Store};
@@ -248,6 +250,32 @@ pub fn assign_val_in_lexical_context(
     }
 
     Some(store)
+}
+
+pub fn setup_func_call(
+    func_name: &str,
+    mut func_env: Env,
+    mut store: Store,
+    decvars: &BTreeSet<&str>,
+    formals: Vec<&str>,
+    vals: Vec<StorableValue>,
+) -> Option<(Env, Store)> {
+    let n = store.len();
+    func_env.push(FlatEnv::new(
+        decvars
+            .iter()
+            .enumerate()
+            .map(|(i, x)| (x.to_string(), n + i))
+            .collect(),
+        func_name.to_string(),
+    ));
+    store.extend(vec![StorableValue::Bottom; decvars.len()]);
+
+    for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
+        store = update(formal, val, &func_env, store)?;
+    }
+
+    Some((func_env, store))
 }
 
 #[cfg(test)]

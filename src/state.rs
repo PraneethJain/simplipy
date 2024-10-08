@@ -6,7 +6,7 @@ use crate::datatypes::{Context, FlatEnv, Object, State, StorableValue};
 use crate::preprocess::Static;
 use crate::utils::{
     assign_in_class_context, assign_in_lexical_context, assign_val_in_class_context,
-    assign_val_in_lexical_context, eval, lookup, update, update_class_env,
+    assign_val_in_lexical_context, eval, lookup, setup_func_call, update, update_class_env,
 };
 
 pub fn init_state(static_info: &Static) -> State {
@@ -57,30 +57,21 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             .map(|x| eval(x, &state.env, &state.store))
                             .collect::<Option<Vec<_>>>()?;
 
-                        let return_closure = Context::Lexical(lineno, state.env);
-                        state.stack.push(return_closure);
+                        state.stack.push(Context::Lexical(lineno, state.env));
 
-                        let n = state.store.len();
-                        state.env = func_env;
-                        state.env.push(FlatEnv::new(
-                            static_info.decvars[&func_lineno]
-                                .iter()
-                                .enumerate()
-                                .map(|(i, x)| (x.to_string(), n + i))
-                                .collect(),
-                            func_name.to_string(),
-                        ));
-                        state.store.extend(vec![
-                            StorableValue::Bottom;
-                            static_info.decvars[&func_lineno].len()
-                        ]);
-
-                        for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-                            state.store = update(formal, val, &state.env, state.store)?;
-                        }
+                        let (new_env, new_store) = setup_func_call(
+                            func_name,
+                            func_env,
+                            state.store,
+                            &static_info.decvars[&func_lineno],
+                            formals,
+                            vals,
+                        )?;
 
                         State {
                             lineno: static_info.block[&func_lineno].0,
+                            env: new_env,
+                            store: new_store,
                             ..state
                         }
                     }
@@ -127,27 +118,19 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             let return_closure = Context::Lexical(lineno, state.env);
                             state.stack.push(return_closure);
 
-                            let n = state.store.len();
-                            state.env = func_env;
-                            state.env.push(FlatEnv::new(
-                                static_info.decvars[&func_lineno]
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, x)| (x.to_string(), n + i))
-                                    .collect(),
-                                func_name.to_string(),
-                            ));
-                            state.store.extend(vec![
-                                StorableValue::Bottom;
-                                static_info.decvars[&func_lineno].len()
-                            ]);
-
-                            for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-                                state.store = update(formal, val, &state.env, state.store)?;
-                            }
+                            let (new_env, new_store) = setup_func_call(
+                                func_name,
+                                func_env,
+                                state.store,
+                                &static_info.decvars[&func_lineno],
+                                formals,
+                                vals,
+                            )?;
 
                             State {
                                 lineno: static_info.block[&func_lineno].0,
+                                env: new_env,
+                                store: new_store,
                                 ..state
                             }
                         } else {
