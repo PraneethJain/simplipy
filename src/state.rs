@@ -21,7 +21,7 @@ pub fn init_state(static_info: &Static) -> State {
             .enumerate()
             .map(|(a, b)| (b.to_string(), a))
             .collect(),
-        local_env: BTreeMap::new(),
+        local_env: None,
         stack: vec![],
         store: vec![StorableValue::Bottom; static_info.decvars[&0].len()],
     }
@@ -69,7 +69,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                         State {
                             lineno: static_info.block[&func_lineno].0,
-                            local_env: new_env,
+                            local_env: Some(new_env),
                             store: new_store,
                             ..state
                         }
@@ -85,7 +85,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             .expect("Object must have an initialized flat environment");
 
                         if let Some(StorableValue::DefinitionClosure(func_lineno, func_env)) =
-                            lookup("__init__", &class_env, &BTreeMap::new(), &state.store).cloned()
+                            lookup("__init__", &None, &class_env, &state.store).cloned()
                         {
                             let func_stmt =
                                 static_info.statements[&func_lineno].as_function_def_stmt()?;
@@ -128,7 +128,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                             State {
                                 lineno: static_info.block[&func_lineno].0,
-                                local_env: new_env,
+                                local_env: Some(new_env),
                                 store: new_store,
                                 ..state
                             }
@@ -217,12 +217,12 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     .clone();
 
                 if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
-                    let mut lookup_env = ret_env.clone();
+                    let mut lookup_env = ret_env.clone().unwrap_or_default();
                     lookup_env.extend(class_env.clone());
                     state.store = assign_val_in_class_context(
                         &targets[0],
                         val,
-                        &lookup_env,
+                        &Some(lookup_env),
                         &state.global_env,
                         class_env,
                         state.store,

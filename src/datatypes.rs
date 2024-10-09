@@ -8,7 +8,7 @@ pub type FlatEnv = BTreeMap<String, usize>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Context {
-    Lexical(usize, FlatEnv),
+    Lexical(usize, Option<FlatEnv>),
     Class(usize, FlatEnv),
 }
 
@@ -26,7 +26,7 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    DefinitionClosure(usize, FlatEnv),
+    DefinitionClosure(usize, Option<FlatEnv>),
     FlatEnv(FlatEnv),
     Object(Object),
 }
@@ -35,7 +35,7 @@ pub enum StorableValue {
 pub struct State {
     pub lineno: usize,
     pub global_env: FlatEnv,
-    pub local_env: FlatEnv,
+    pub local_env: Option<FlatEnv>,
     pub stack: Stack,
     pub store: Store,
 }

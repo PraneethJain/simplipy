@@ -1,7 +1,6 @@
 use crate::datatypes::{State, StorableValue};
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick};
-use ratatui::layout::Direction;
 use ratatui::{
     buffer::Buffer,
     crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -148,40 +147,57 @@ impl<'a> Widget for &App<'_> {
         let [env_area, store_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
 
-        let [local_env_area, global_env_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(env_area);
+        if let Some(local_env) = &self.cur_state.local_env {
+            let [local_env_area, global_env_area] =
+                Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(env_area);
 
-        Paragraph::new(Text::from(
-            self.cur_state
-                .local_env
-                .iter()
-                .map(|(i, val)| {
-                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                })
-                .collect::<Vec<_>>(),
-        ))
-        .block(
-            Block::bordered()
-                .title(Title::from(format!("Local Env")).alignment(Alignment::Center))
-                .border_set(border::ROUNDED),
-        )
-        .render(local_env_area, buf);
+            Paragraph::new(Text::from(
+                local_env
+                    .iter()
+                    .map(|(i, val)| {
+                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .block(
+                Block::bordered()
+                    .title(Title::from(format!("Local Env")).alignment(Alignment::Center))
+                    .border_set(border::ROUNDED),
+            )
+            .render(local_env_area, buf);
 
-        Paragraph::new(Text::from(
-            self.cur_state
-                .global_env
-                .iter()
-                .map(|(i, val)| {
-                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                })
-                .collect::<Vec<_>>(),
-        ))
-        .block(
-            Block::bordered()
-                .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
-                .border_set(border::ROUNDED),
-        )
-        .render(global_env_area, buf);
+            Paragraph::new(Text::from(
+                self.cur_state
+                    .global_env
+                    .iter()
+                    .map(|(i, val)| {
+                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .block(
+                Block::bordered()
+                    .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
+                    .border_set(border::ROUNDED),
+            )
+            .render(global_env_area, buf);
+        } else {
+            Paragraph::new(Text::from(
+                self.cur_state
+                    .global_env
+                    .iter()
+                    .map(|(i, val)| {
+                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+            .block(
+                Block::bordered()
+                    .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
+                    .border_set(border::ROUNDED),
+            )
+            .render(env_area, buf);
+        }
 
         Paragraph::new(Text::from(
             self.cur_state
