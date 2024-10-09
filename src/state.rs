@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use rustpython_parser::ast::{self, Stmt};
 
-use crate::datatypes::{Context, FlatEnv, Object, State, StorableValue};
+use crate::datatypes::{Context, Object, State, StorableValue};
 use crate::preprocess::Static;
 use crate::utils::{
     assign_in_class_context, assign_in_lexical_context, assign_val_in_class_context,
@@ -16,14 +16,12 @@ pub fn init_state(static_info: &Static) -> State {
             .keys()
             .min()
             .expect("Atleast one statement should be present"),
-        env: vec![FlatEnv::new(
-            static_info.decvars[&0]
-                .iter()
-                .enumerate()
-                .map(|(a, b)| (b.to_string(), a))
-                .collect(),
-            "Global".to_string(),
-        )],
+        global_env: static_info.decvars[&0]
+            .iter()
+            .enumerate()
+            .map(|(a, b)| (b.to_string(), a))
+            .collect(),
+        local_env: BTreeMap::new(),
         stack: vec![],
         store: vec![StorableValue::Bottom; static_info.decvars[&0].len()],
     }
@@ -37,7 +35,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
             if let Some(ast::ExprCall { func, args, .. }) = value.as_call_expr() {
                 let func_name = func.as_name_expr()?.id.as_str();
-                match lookup(func_name, &state.env, &state.store)?.clone() {
+                match lookup(func_name, &state.local_env, &state.global_env, &state.store)?.clone()
+                {
                     StorableValue::DefinitionClosure(func_lineno, func_env) => {
                         let func_stmt =
                             static_info.statements[&func_lineno].as_function_def_stmt()?;
@@ -54,14 +53,14 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                         let vals = args
                             .iter()
-                            .map(|x| eval(x, &state.env, &state.store))
+                            .map(|x| eval(x, &state.local_env, &state.global_env, &state.store))
                             .collect::<Option<Vec<_>>>()?;
 
-                        state.stack.push(Context::Lexical(lineno, state.env));
+                        state.stack.push(Context::Lexical(lineno, state.local_env));
 
                         let (new_env, new_store) = setup_func_call(
-                            func_name,
                             func_env,
+                            &state.global_env,
                             state.store,
                             &static_info.decvars[&func_lineno],
                             formals,
@@ -70,7 +69,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                         State {
                             lineno: static_info.block[&func_lineno].0,
-                            env: new_env,
+                            local_env: new_env,
                             store: new_store,
                             ..state
                         }
@@ -86,7 +85,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             .expect("Object must have an initialized flat environment");
 
                         if let Some(StorableValue::DefinitionClosure(func_lineno, func_env)) =
-                            lookup("__init__", &vec![class_env], &state.store).cloned()
+                            lookup("__init__", &class_env, &BTreeMap::new(), &state.store).cloned()
                         {
                             let func_stmt =
                                 static_info.statements[&func_lineno].as_function_def_stmt()?;
@@ -104,10 +103,10 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                             let mut vals = args
                                 .iter()
-                                .map(|x| eval(x, &state.env, &state.store))
+                                .map(|x| eval(x, &state.local_env, &state.global_env, &state.store))
                                 .collect::<Option<Vec<_>>>()?;
 
-                            let obj_env = FlatEnv::new(BTreeMap::new(), "".to_string());
+                            let obj_env = BTreeMap::new();
                             state.store.push(StorableValue::FlatEnv(obj_env));
                             let obj = Object {
                                 class: Some(flat_env_addr),
@@ -115,12 +114,12 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             };
                             vals.insert(0, StorableValue::Object(obj));
 
-                            let return_closure = Context::Lexical(lineno, state.env);
+                            let return_closure = Context::Lexical(lineno, state.local_env);
                             state.stack.push(return_closure);
 
                             let (new_env, new_store) = setup_func_call(
-                                func_name,
                                 func_env,
+                                &state.global_env,
                                 state.store,
                                 &static_info.decvars[&func_lineno],
                                 formals,
@@ -129,7 +128,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                             State {
                                 lineno: static_info.block[&func_lineno].0,
-                                env: new_env,
+                                local_env: new_env,
                                 store: new_store,
                                 ..state
                             }
@@ -144,13 +143,19 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     state.store = assign_in_class_context(
                         &targets[0],
                         value,
-                        &state.env,
+                        &state.local_env,
+                        &state.global_env,
                         class_env,
                         state.store,
                     )?;
                 } else {
-                    state.store =
-                        assign_in_lexical_context(&targets[0], value, &state.env, state.store)?;
+                    state.store = assign_in_lexical_context(
+                        &targets[0],
+                        value,
+                        &state.local_env,
+                        &state.global_env,
+                        state.store,
+                    )?;
                 }
 
                 State {
@@ -160,7 +165,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             }
         }
         Stmt::While(ast::StmtWhile { test, .. }) | Stmt::If(ast::StmtIf { test, .. }) => {
-            let res = eval(&test, &state.env, &state.store)?;
+            let res = eval(&test, &state.local_env, &state.global_env, &state.store)?;
             let bool_res = res.bool()?;
             State {
                 lineno: if bool_res {
@@ -178,12 +183,18 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             ..state
         },
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) => {
-            let closure = StorableValue::DefinitionClosure(lineno, state.env.clone());
+            let closure = StorableValue::DefinitionClosure(lineno, state.local_env.clone());
 
             if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
                 state.store = update_class_env(name, closure, class_env, state.store);
             } else {
-                state.store = update(name, closure, &state.env, state.store)?;
+                state.store = update(
+                    name,
+                    closure,
+                    &state.local_env,
+                    &state.global_env,
+                    state.store,
+                )?;
             }
 
             State {
@@ -193,7 +204,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
         }
         Stmt::Return(ast::StmtReturn { value, .. }) => {
             let val = if let Some(expr) = value {
-                eval(expr, &state.env, &state.store)?
+                eval(expr, &state.local_env, &state.global_env, &state.store)?
             } else {
                 StorableValue::None
             };
@@ -207,22 +218,28 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                 if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
                     let mut lookup_env = ret_env.clone();
-                    lookup_env.push(class_env.clone());
+                    lookup_env.extend(class_env.clone());
                     state.store = assign_val_in_class_context(
                         &targets[0],
                         val,
                         &lookup_env,
+                        &state.global_env,
                         class_env,
                         state.store,
                     )?;
                 } else {
-                    state.store =
-                        assign_val_in_lexical_context(&targets[0], val, &ret_env, state.store)?;
+                    state.store = assign_val_in_lexical_context(
+                        &targets[0],
+                        val,
+                        &ret_env,
+                        &state.global_env,
+                        state.store,
+                    )?;
                 }
 
                 State {
                     lineno: static_info.next_stmt[&ret_lineno],
-                    env: ret_env,
+                    local_env: ret_env,
                     ..state
                 }
             } else {
@@ -230,10 +247,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             }
         }
         Stmt::ClassDef(ast::StmtClassDef { name, bases, .. }) => {
-            state.stack.push(Context::Class(
-                lineno,
-                FlatEnv::new(BTreeMap::new(), name.to_string()),
-            ));
+            state.stack.push(Context::Class(lineno, BTreeMap::new()));
             State {
                 lineno: static_info.block[&lineno].0,
                 ..state
@@ -277,7 +291,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
             if let Some(Context::Class(_, class_env)) = next_state.stack.last_mut() {
                 class_env
-                    .mapping
                     .entry(class_name.to_string())
                     .and_modify(|idx| {
                         next_state.store[*idx] = class_object.clone();
@@ -290,7 +303,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 next_state.store = update(
                     class_name.as_str(),
                     class_object,
-                    &next_state.env,
+                    &next_state.local_env,
+                    &next_state.global_env,
                     next_state.store,
                 )?;
             }

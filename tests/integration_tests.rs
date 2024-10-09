@@ -41,8 +41,8 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let z = lookup("z", &state.env, &state.store).unwrap();
-    let i = lookup("i", &state.env, &state.store).unwrap();
+    let z = lookup("z", &state.local_env, &state.global_env, &state.store).unwrap();
+    let i = lookup("i", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*z, StorableValue::Int(BigInt::from(5)));
     assert_eq!(*i, StorableValue::Int(BigInt::from(3)));
@@ -72,7 +72,7 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let b = lookup("b", &state.env, &state.store).unwrap();
+    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*b, StorableValue::Int(BigInt::from(5)));
 }
@@ -107,7 +107,7 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.env, &state.store).unwrap();
+    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*a, StorableValue::Int(BigInt::from(4)));
 }
@@ -139,9 +139,9 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.env, &state.store).unwrap();
-    let b = lookup("b", &state.env, &state.store).unwrap();
-    let c = lookup("c", &state.env, &state.store).unwrap();
+    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
+    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
+    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*a, StorableValue::Int(BigInt::from(9)));
     assert_eq!(*b, StorableValue::Int(BigInt::from(9)));
@@ -180,10 +180,10 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.env, &state.store).unwrap();
-    let b = lookup("b", &state.env, &state.store).unwrap();
-    let c = lookup("c", &state.env, &state.store).unwrap();
-    let d = lookup("d", &state.env, &state.store).unwrap();
+    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
+    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
+    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
+    let d = lookup("d", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*a, StorableValue::Int(BigInt::from(15)));
     assert_eq!(*b, StorableValue::Int(BigInt::from(9)));
@@ -221,9 +221,9 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let x = lookup("x", &state.env, &state.store).unwrap();
-    let y = lookup("y", &state.env, &state.store).unwrap();
-    let z = lookup("z", &state.env, &state.store).unwrap();
+    let x = lookup("x", &state.local_env, &state.global_env, &state.store).unwrap();
+    let y = lookup("y", &state.local_env, &state.global_env, &state.store).unwrap();
+    let z = lookup("z", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*x, StorableValue::Int(BigInt::from(4)));
     assert_eq!(*y, StorableValue::Int(BigInt::from(6)));
@@ -262,9 +262,9 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.env, &state.store).unwrap();
-    let b = lookup("b", &state.env, &state.store).unwrap();
-    let c = lookup("c", &state.env, &state.store).unwrap();
+    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
+    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
+    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*a, StorableValue::Int(BigInt::from(4)));
     assert_eq!(*b, StorableValue::Int(BigInt::from(3)));
@@ -298,8 +298,8 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let z = lookup("z", &state.env, &state.store).unwrap();
-    let w = lookup("w", &state.env, &state.store).unwrap();
+    let z = lookup("z", &state.local_env, &state.global_env, &state.store).unwrap();
+    let w = lookup("w", &state.local_env, &state.global_env, &state.store).unwrap();
 
     assert_eq!(*z, StorableValue::Int(BigInt::from(3)));
     assert_eq!(*w, StorableValue::Int(BigInt::from(10)));

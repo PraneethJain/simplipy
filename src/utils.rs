@@ -1,22 +1,36 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rustpython_parser::ast::{self, Expr, Identifier};
 
-use crate::datatypes::{Env, FlatEnv, Object, StorableValue, Store};
+use crate::datatypes::{FlatEnv, Object, StorableValue, Store};
 
-pub fn env_lookup(var: &str, env: &Env) -> Option<usize> {
-    env.iter()
-        .rev()
-        .find_map(|local_env| local_env.mapping.get(var).copied())
+pub fn env_lookup(var: &str, local_env: &FlatEnv, global_env: &FlatEnv) -> Option<usize> {
+    if let Some(&idx) = local_env.get(var) {
+        Some(idx)
+    } else {
+        global_env.get(var).cloned()
+    }
 }
 
-pub fn lookup<'a>(var: &str, env: &Env, store: &'a Store) -> Option<&'a StorableValue> {
-    env_lookup(var, env).and_then(|idx| store.get(idx))
+pub fn lookup<'a>(
+    var: &str,
+    local_env: &FlatEnv,
+    global_env: &FlatEnv,
+    store: &'a Store,
+) -> Option<&'a StorableValue> {
+    env_lookup(var, local_env, global_env).and_then(|idx| store.get(idx))
 }
 
-pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
+pub fn eval(
+    expr: &Expr,
+    local_env: &FlatEnv,
+    global_env: &FlatEnv,
+    store: &Store,
+) -> Option<StorableValue> {
     match expr {
-        Expr::Name(ast::ExprName { id, .. }) => lookup(id.as_str(), env, store).cloned(),
+        Expr::Name(ast::ExprName { id, .. }) => {
+            lookup(id.as_str(), local_env, global_env, store).cloned()
+        }
         Expr::Constant(ast::ExprConstant { value, .. }) => {
             use ast::Constant;
             match value {
@@ -37,20 +51,20 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
                 .expect("Object fields must be accessed directly")
                 .id
                 .as_str();
-            let obj = lookup(obj_var, env, store)?
+            let obj = lookup(obj_var, local_env, global_env, store)?
                 .as_object()
                 .expect("Object must be stored as object type");
             let obj_env = store
                 .get(obj.flat_env_addr)
                 .and_then(|x| x.as_flat_env().cloned())
                 .expect("Object must have its environment initialized");
-            lookup(attr, &vec![obj_env], store).cloned()
+            lookup(attr, &obj_env, &BTreeMap::new(), store).cloned()
         }
         Expr::BinOp(ast::ExprBinOp {
             left, op, right, ..
         }) => {
-            let left_val = eval(left, env, store)?;
-            let right_val = eval(right, env, store)?;
+            let left_val = eval(left, local_env, global_env, store)?;
+            let right_val = eval(right, local_env, global_env, store)?;
 
             use ast::Operator;
             match op {
@@ -75,10 +89,10 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
             comparators,
             ..
         }) => {
-            let mut left_val = &eval(left, env, store)?;
+            let mut left_val = &eval(left, local_env, global_env, store)?;
             let right_vals = comparators
                 .iter()
-                .map(|x| eval(x, env, store))
+                .map(|x| eval(x, local_env, global_env, store))
                 .collect::<Option<Vec<_>>>()?;
             let mut result = true;
             for (right_val, op) in right_vals.iter().zip(ops.iter()) {
@@ -100,7 +114,7 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
         Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) => {
             let vals = values
                 .iter()
-                .map(|x| eval(x, env, store).and_then(|x| x.bool()))
+                .map(|x| eval(x, local_env, global_env, store).and_then(|x| x.bool()))
                 .collect::<Option<Vec<_>>>()?;
             Some(StorableValue::Bool(match op {
                 ast::BoolOp::And => vals.iter().all(|&x| x),
@@ -131,8 +145,14 @@ pub fn eval(expr: &Expr, env: &Env, store: &Store) -> Option<StorableValue> {
     }
 }
 
-pub fn update(var: &str, val: StorableValue, env: &Env, mut store: Store) -> Option<Store> {
-    let store_idx = env_lookup(var, env)?;
+pub fn update(
+    var: &str,
+    val: StorableValue,
+    local_env: &FlatEnv,
+    global_env: &FlatEnv,
+    mut store: Store,
+) -> Option<Store> {
+    let store_idx = env_lookup(var, local_env, global_env)?;
     let store_val = store.get_mut(store_idx)?;
     *store_val = val;
 
@@ -147,7 +167,6 @@ pub fn update_obj(
 ) -> Option<Store> {
     let mut obj_env = store.get(obj.flat_env_addr)?.as_flat_env().cloned()?;
     obj_env
-        .mapping
         .entry(var)
         .and_modify(|&mut x| store[x] = val.clone())
         .or_insert_with(|| {
@@ -166,7 +185,6 @@ pub fn update_class_env(
     mut store: Store,
 ) -> Store {
     class_env
-        .mapping
         .entry(name.to_string())
         .and_modify(|idx| {
             store[*idx] = val.clone();
@@ -182,21 +200,23 @@ pub fn update_class_env(
 pub fn assign_in_class_context(
     var: &Expr,
     value: &Expr,
-    env: &Env,
+    local_env: &FlatEnv,
+    global_env: &FlatEnv,
     class_env: &mut FlatEnv,
     store: Store,
 ) -> Option<Store> {
-    let mut lookup_env = env.clone();
-    lookup_env.push(class_env.clone());
-    let val = eval(value, &lookup_env, &store)?;
+    let mut lookup_env = local_env.clone();
+    lookup_env.extend(class_env.clone());
+    let val = eval(value, &lookup_env, global_env, &store)?;
 
-    assign_val_in_class_context(var, val, &lookup_env, class_env, store)
+    assign_val_in_class_context(var, val, &lookup_env, global_env, class_env, store)
 }
 
 pub fn assign_val_in_class_context(
     var: &Expr,
     val: StorableValue,
-    lookup_env: &Env,
+    lookup_env: &FlatEnv,
+    global_env: &FlatEnv,
     class_env: &mut FlatEnv,
     mut store: Store,
 ) -> Option<Store> {
@@ -205,6 +225,7 @@ pub fn assign_val_in_class_context(
             let obj = lookup(
                 value.as_name_expr().unwrap().id.as_str(),
                 &lookup_env,
+                global_env,
                 &store,
             )?
             .as_object()
@@ -222,29 +243,36 @@ pub fn assign_val_in_class_context(
 pub fn assign_in_lexical_context(
     var: &Expr,
     value: &Expr,
-    env: &Env,
+    local_env: &FlatEnv,
+    global_env: &FlatEnv,
     store: Store,
 ) -> Option<Store> {
-    let val = eval(value, env, &store)?;
-    assign_val_in_lexical_context(var, val, env, store)
+    let val = eval(value, local_env, global_env, &store)?;
+    assign_val_in_lexical_context(var, val, local_env, global_env, store)
 }
 
 pub fn assign_val_in_lexical_context(
     var: &Expr,
     val: StorableValue,
-    env: &Env,
+    local_env: &FlatEnv,
+    global_env: &FlatEnv,
     mut store: Store,
 ) -> Option<Store> {
     match var {
         ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
-            let obj = lookup(value.as_name_expr().unwrap().id.as_str(), &env, &store)?
-                .as_object()
-                .unwrap()
-                .clone();
+            let obj = lookup(
+                value.as_name_expr().unwrap().id.as_str(),
+                local_env,
+                global_env,
+                &store,
+            )?
+            .as_object()
+            .unwrap()
+            .clone();
             store = update_obj(attr.to_string(), val, &obj, store)?;
         }
         ast::Expr::Name(name) => {
-            store = update(&name.id, val, env, store)?;
+            store = update(&name.id, val, local_env, global_env, store)?;
         }
         _ => unimplemented!(),
     }
@@ -253,26 +281,24 @@ pub fn assign_val_in_lexical_context(
 }
 
 pub fn setup_func_call(
-    func_name: &str,
-    mut func_env: Env,
+    mut func_env: FlatEnv,
+    global_env: &FlatEnv,
     mut store: Store,
     decvars: &BTreeSet<&str>,
     formals: Vec<&str>,
     vals: Vec<StorableValue>,
-) -> Option<(Env, Store)> {
+) -> Option<(FlatEnv, Store)> {
     let n = store.len();
-    func_env.push(FlatEnv::new(
+    func_env.extend(
         decvars
             .iter()
             .enumerate()
-            .map(|(i, x)| (x.to_string(), n + i))
-            .collect(),
-        func_name.to_string(),
-    ));
+            .map(|(i, x)| (x.to_string(), n + i)),
+    );
     store.extend(vec![StorableValue::Bottom; decvars.len()]);
 
     for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-        store = update(formal, val, &func_env, store)?;
+        store = update(formal, val, &func_env, &global_env, store)?;
     }
 
     Some((func_env, store))
@@ -285,20 +311,21 @@ mod test {
     use rustpython_parser::{ast::bigint::BigInt, parse, Mode};
     use std::collections::BTreeMap;
 
-    fn eval_from_src(source: &str, env: &Env, store: &Store) -> Option<StorableValue> {
+    fn eval_from_src(
+        source: &str,
+        local_env: &FlatEnv,
+        global_env: &FlatEnv,
+        store: &Store,
+    ) -> Option<StorableValue> {
         let ast = parse(source, Mode::Expression, "<embedded>").unwrap();
         let expr = &ast.as_expression().unwrap().body;
-        eval(expr, env, store)
+        eval(expr, local_env, global_env, store)
     }
 
     #[test]
     fn eval_simple() {
         let source = r#"1 + 2 * 3 + 2"#;
-        let result = eval_from_src(
-            source,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
-            &vec![],
-        );
+        let result = eval_from_src(source, &BTreeMap::new(), &BTreeMap::new(), &vec![]);
         assert_eq!(result.unwrap(), StorableValue::Int(BigInt::from(9)));
     }
 
@@ -307,14 +334,12 @@ mod test {
         let source = r#"x + y*y*y + z + 2*8 + 8/4"#;
         let result = eval_from_src(
             source,
-            &vec![FlatEnv::new(
-                BTreeMap::from([
-                    ("x".to_string(), 0),
-                    ("y".to_string(), 1),
-                    ("z".to_string(), 2),
-                ]),
-                "".to_string(),
-            )],
+            &BTreeMap::from([
+                ("x".to_string(), 0),
+                ("y".to_string(), 1),
+                ("z".to_string(), 2),
+            ]),
+            &BTreeMap::new(),
             &vec![
                 StorableValue::Int(BigInt::from(0)),
                 StorableValue::Int(BigInt::from(2)),
@@ -329,10 +354,8 @@ mod test {
         let source = r#"x +  "hello""#;
         let result = eval_from_src(
             source,
-            &vec![FlatEnv::new(
-                BTreeMap::from([("x".to_string(), 0)]),
-                "".to_string(),
-            )],
+            &BTreeMap::from([("x".to_string(), 0)]),
+            &BTreeMap::new(),
             &vec![StorableValue::String(String::from("world "))],
         );
         assert_eq!(
@@ -345,42 +368,48 @@ mod test {
     fn eval_conditions() {
         let result = eval_from_src(
             r#"1 < 2 < 3 < 4 < 5"#,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
         let result = eval_from_src(
             r#"1 < 2 < 3 < 4 < 2"#,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
         let result = eval_from_src(
             r#"1 < 5 and 3 > 2"#,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
         let result = eval_from_src(
             r#"1 < 2 < 4 or 2 > 4"#,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));
 
         let result = eval_from_src(
             r#"1 >= 4 or 4 <= 1"#,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(false));
 
         let result = eval_from_src(
             r#"1 >= 4 or 4 <= 1 or True"#,
-            &vec![FlatEnv::new(BTreeMap::new(), "".to_string())],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
             &vec![],
         );
         assert_eq!(result.unwrap(), StorableValue::Bool(true));

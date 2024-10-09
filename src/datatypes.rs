@@ -2,26 +2,14 @@ use rustpython_parser::ast::bigint::BigInt;
 use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 
-pub type Env = Vec<FlatEnv>;
 pub type Stack = Vec<Context>;
 pub type Store = Vec<StorableValue>;
+pub type FlatEnv = BTreeMap<String, usize>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Context {
-    Lexical(usize, Env),
+    Lexical(usize, FlatEnv),
     Class(usize, FlatEnv),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct FlatEnv {
-    pub mapping: BTreeMap<String, usize>,
-    pub func_name: String,
-}
-
-impl FlatEnv {
-    pub fn new(mapping: BTreeMap<String, usize>, func_name: String) -> Self {
-        Self { mapping, func_name }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,7 +26,7 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    DefinitionClosure(usize, Env),
+    DefinitionClosure(usize, FlatEnv),
     FlatEnv(FlatEnv),
     Object(Object),
 }
@@ -46,7 +34,8 @@ pub enum StorableValue {
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
     pub lineno: usize,
-    pub env: Env,
+    pub global_env: FlatEnv,
+    pub local_env: FlatEnv,
     pub stack: Stack,
     pub store: Store,
 }

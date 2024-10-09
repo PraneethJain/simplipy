@@ -148,35 +148,40 @@ impl<'a> Widget for &App<'_> {
         let [env_area, store_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
 
-        for (&local_env_area, local_env) in Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(vec![Constraint::Fill(1); self.cur_state.env.len()])
-            .vertical_margin(0)
-            .horizontal_margin(0)
-            .split(env_area)
-            .iter()
-            .rev()
-            .zip(self.cur_state.env.iter())
-        {
-            Paragraph::new(Text::from(
-                local_env
-                    .mapping
-                    .iter()
-                    .map(|(i, val)| {
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .block(
-                Block::bordered()
-                    .title(
-                        Title::from(format!("{} Env", local_env.func_name))
-                            .alignment(Alignment::Center),
-                    )
-                    .border_set(border::ROUNDED),
-            )
-            .render(local_env_area, buf);
-        }
+        let [local_env_area, global_env_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(env_area);
+
+        Paragraph::new(Text::from(
+            self.cur_state
+                .local_env
+                .iter()
+                .map(|(i, val)| {
+                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                })
+                .collect::<Vec<_>>(),
+        ))
+        .block(
+            Block::bordered()
+                .title(Title::from(format!("Local Env")).alignment(Alignment::Center))
+                .border_set(border::ROUNDED),
+        )
+        .render(local_env_area, buf);
+
+        Paragraph::new(Text::from(
+            self.cur_state
+                .global_env
+                .iter()
+                .map(|(i, val)| {
+                    Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+                })
+                .collect::<Vec<_>>(),
+        ))
+        .block(
+            Block::bordered()
+                .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
+                .border_set(border::ROUNDED),
+        )
+        .render(global_env_area, buf);
 
         Paragraph::new(Text::from(
             self.cur_state
@@ -188,37 +193,19 @@ impl<'a> Widget for &App<'_> {
                         if self.expand_closures {
                             let mut v = vec![Line::from(
                                 format!("{}: ", i).bold().blue()
-                                    + format!(
-                                        "Closure with {} at line {}",
-                                        env.iter()
-                                            .map(|x| x.func_name.clone())
-                                            .collect::<Vec<_>>()
-                                            .join(", "),
-                                        lineno
-                                    )
-                                    .into(),
+                                    + format!("Closure at line {}", lineno).into(),
                             )];
 
-                            v.extend(env.iter().map(|local_env| {
-                                Line::from(format!(
-                                    "{}: {:?}",
-                                    local_env.func_name, local_env.mapping
-                                ))
-                            }));
+                            v.extend(
+                                env.iter()
+                                    .map(|local_env| Line::from(format!("{:?}", local_env))),
+                            );
 
                             v
                         } else {
                             vec![Line::from(
                                 format!("{}: ", i).bold().blue()
-                                    + format!(
-                                        "Closure with {} at line {}",
-                                        env.iter()
-                                            .map(|x| x.func_name.clone())
-                                            .collect::<Vec<_>>()
-                                            .join(", "),
-                                        lineno
-                                    )
-                                    .into(),
+                                    + format!("Closure at line {}", lineno).into(),
                             )]
                         }
                     } else {
