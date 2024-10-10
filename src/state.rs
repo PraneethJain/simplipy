@@ -147,7 +147,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             .expect("Object fields must be accessed directly")
                             .id
                             .as_str();
-                        
+
                         let method = obj_lookup(
                             obj_var,
                             &attr,
