@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use rustpython_parser::ast::{self, Expr, Identifier};
 
-use crate::datatypes::{FlatEnv, Object, StorableValue, Store};
+use crate::datatypes::{Env, Object, StorableValue, Store};
 
-pub fn env_lookup(var: &str, local_env: &Option<FlatEnv>, global_env: &FlatEnv) -> Option<usize> {
+pub fn env_lookup(var: &str, local_env: &Option<Env>, global_env: &Env) -> Option<usize> {
     if let Some(local_env) = local_env {
         if let Some(&idx) = local_env.get(var) {
             return Some(idx);
@@ -15,17 +15,70 @@ pub fn env_lookup(var: &str, local_env: &Option<FlatEnv>, global_env: &FlatEnv) 
 
 pub fn lookup<'a>(
     var: &str,
-    local_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
+    local_env: &Option<Env>,
+    global_env: &Env,
     store: &'a Store,
 ) -> Option<&'a StorableValue> {
     env_lookup(var, local_env, global_env).and_then(|idx| store.get(idx))
 }
 
+pub fn class_env_lookup<'a>(
+    attr: &str,
+    class_env: &Env,
+    store: &'a Store,
+) -> Option<&'a StorableValue> {
+    let idx = *class_env.get(attr)?;
+    store.get(idx)
+
+    // lookup through mro here when doing inheritance
+}
+
+pub fn obj_lookup<'a>(
+    obj_var: &str,
+    attr: &str,
+    local_env: &Option<Env>,
+    global_env: &Env,
+    store: &'a Store,
+) -> Option<StorableValue> {
+    let obj = lookup(obj_var, local_env, global_env, store)?
+        .as_object()
+        .expect("Object must be stored as object type");
+    let obj_idx = env_lookup(obj_var, local_env, global_env)?;
+    let obj_env = store
+        .get(obj.env_addr)
+        .and_then(|x| x.as_env().cloned())
+        .expect("Object must have its environment initialized");
+    if let Some(val) = lookup(&attr, &None, &obj_env, store).cloned() {
+        Some(val)
+    } else if let Some(class_env_addr) = obj.class {
+        let class_env = store
+            .get(class_env_addr)
+            .and_then(|x| x.as_env())
+            .expect("Class environment must be initialized");
+        let res = class_env_lookup(attr, class_env, store).cloned();
+
+        if let Some(StorableValue::DefinitionClosure(func_lineno, func_env, mut formals)) = res {
+            // return a bound method
+            let mut func_env = func_env.unwrap_or_default();
+            let self_var = formals.remove(0);
+            func_env.insert(self_var, obj_idx);
+            Some(StorableValue::DefinitionClosure(
+                func_lineno,
+                Some(func_env),
+                formals,
+            ))
+        } else {
+            res
+        }
+    } else {
+        None
+    }
+}
+
 pub fn eval(
     expr: &Expr,
-    local_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
+    local_env: &Option<Env>,
+    global_env: &Env,
     store: &Store,
 ) -> Option<StorableValue> {
     match expr {
@@ -52,14 +105,15 @@ pub fn eval(
                 .expect("Object fields must be accessed directly")
                 .id
                 .as_str();
-            let obj = lookup(obj_var, local_env, global_env, store)?
-                .as_object()
-                .expect("Object must be stored as object type");
-            let obj_env = store
-                .get(obj.flat_env_addr)
-                .and_then(|x| x.as_flat_env().cloned())
-                .expect("Object must have its environment initialized");
-            lookup(attr, &None, &obj_env, store).cloned()
+            obj_lookup(obj_var, attr, local_env, global_env, store)
+        }
+        Expr::UnaryOp(ast::ExprUnaryOp { op, operand, .. }) => {
+            let val = eval(operand, local_env, global_env, store)?;
+            use ast::UnaryOp;
+            match op {
+                UnaryOp::USub => -val,
+                UnaryOp::Not | UnaryOp::UAdd | UnaryOp::Invert => todo!(),
+            }
         }
         Expr::BinOp(ast::ExprBinOp {
             left, op, right, ..
@@ -123,7 +177,7 @@ pub fn eval(
             }))
         }
         Expr::NamedExpr(_) => todo!(),
-        Expr::UnaryOp(_) => todo!(),
+
         Expr::Lambda(_) => todo!(),
         Expr::IfExp(_) => todo!(),
         Expr::Dict(_) => todo!(),
@@ -149,8 +203,8 @@ pub fn eval(
 pub fn update(
     var: &str,
     val: StorableValue,
-    local_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
+    local_env: &Option<Env>,
+    global_env: &Env,
     mut store: Store,
 ) -> Option<Store> {
     let store_idx = env_lookup(var, local_env, global_env)?;
@@ -166,7 +220,7 @@ pub fn update_obj(
     obj: &Object,
     mut store: Store,
 ) -> Option<Store> {
-    let mut obj_env = store.get(obj.flat_env_addr)?.as_flat_env().cloned()?;
+    let mut obj_env = store.get(obj.env_addr)?.as_env().cloned()?;
     obj_env
         .entry(var)
         .and_modify(|&mut x| store[x] = val.clone())
@@ -174,7 +228,7 @@ pub fn update_obj(
             store.push(val);
             store.len() - 1
         });
-    store[obj.flat_env_addr] = StorableValue::FlatEnv(obj_env);
+    store[obj.env_addr] = StorableValue::Env(obj_env);
 
     Some(store)
 }
@@ -182,7 +236,7 @@ pub fn update_obj(
 pub fn update_class_env(
     name: &Identifier,
     val: StorableValue,
-    class_env: &mut FlatEnv,
+    class_env: &mut Env,
     mut store: Store,
 ) -> Store {
     class_env
@@ -201,9 +255,9 @@ pub fn update_class_env(
 pub fn assign_in_class_context(
     var: &Expr,
     value: &Expr,
-    local_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
-    class_env: &mut FlatEnv,
+    local_env: &Option<Env>,
+    global_env: &Env,
+    class_env: &mut Env,
     store: Store,
 ) -> Option<Store> {
     let lookup_env = {
@@ -223,9 +277,9 @@ pub fn assign_in_class_context(
 pub fn assign_val_in_class_context(
     var: &Expr,
     val: StorableValue,
-    lookup_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
-    class_env: &mut FlatEnv,
+    lookup_env: &Option<Env>,
+    global_env: &Env,
+    class_env: &mut Env,
     mut store: Store,
 ) -> Option<Store> {
     match var {
@@ -251,8 +305,8 @@ pub fn assign_val_in_class_context(
 pub fn assign_in_lexical_context(
     var: &Expr,
     value: &Expr,
-    local_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
+    local_env: &Option<Env>,
+    global_env: &Env,
     store: Store,
 ) -> Option<Store> {
     let val = eval(value, local_env, global_env, &store)?;
@@ -262,8 +316,8 @@ pub fn assign_in_lexical_context(
 pub fn assign_val_in_lexical_context(
     var: &Expr,
     val: StorableValue,
-    local_env: &Option<FlatEnv>,
-    global_env: &FlatEnv,
+    local_env: &Option<Env>,
+    global_env: &Env,
     mut store: Store,
 ) -> Option<Store> {
     match var {
@@ -288,42 +342,69 @@ pub fn assign_val_in_lexical_context(
     Some(store)
 }
 
+pub fn update_in_global_env(
+    var: String,
+    val: StorableValue,
+    mut global_env: Env,
+    mut store: Store,
+) -> (Env, Store) {
+    global_env
+        .entry(var)
+        .and_modify(|x| store[*x] = val.clone())
+        .or_insert_with(|| {
+            store.push(val);
+            store.len() - 1
+        });
+
+    (global_env, store)
+}
+
 pub fn setup_func_call(
-    func_env: Option<FlatEnv>,
-    global_env: &FlatEnv,
+    func_env: Option<Env>,
+    mut global_env: Env,
     mut store: Store,
     decvars: &BTreeSet<&str>,
-    formals: Vec<&str>,
+    globals: &BTreeSet<&str>,
+    formals: Vec<String>,
     vals: Vec<StorableValue>,
-) -> Option<(FlatEnv, Store)> {
+) -> Option<(Env, Env, Store)> {
     let n = store.len();
     let mut func_env = func_env.unwrap_or_default();
     func_env.extend(
         decvars
             .iter()
+            .filter(|&x| !globals.contains(x))
             .enumerate()
             .map(|(i, x)| (x.to_string(), n + i)),
     );
-    store.extend(vec![StorableValue::Bottom; decvars.len()]);
+    store.extend(vec![StorableValue::Bottom; func_env.len()]);
 
-    for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-        store = update(formal, val, &Some(func_env.clone()), &global_env, store)?;
+    for var in globals {
+        let var_str = var.to_string();
+        if !global_env.contains_key(&var_str) {
+            (global_env, store) =
+                update_in_global_env(var_str, StorableValue::Bottom, global_env, store);
+        }
     }
 
-    Some((func_env, store))
+    for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
+        store = update(&formal, val, &Some(func_env.clone()), &global_env, store)?;
+    }
+
+    Some((func_env, global_env, store))
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::datatypes::FlatEnv;
+    use crate::datatypes::Env;
     use rustpython_parser::{ast::bigint::BigInt, parse, Mode};
     use std::collections::BTreeMap;
 
     fn eval_from_src(
         source: &str,
-        local_env: &Option<FlatEnv>,
-        global_env: &FlatEnv,
+        local_env: &Option<Env>,
+        global_env: &Env,
         store: &Store,
     ) -> Option<StorableValue> {
         let ast = parse(source, Mode::Expression, "<embedded>").unwrap();

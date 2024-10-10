@@ -6,7 +6,8 @@ use crate::datatypes::{Context, Object, State, StorableValue};
 use crate::preprocess::Static;
 use crate::utils::{
     assign_in_class_context, assign_in_lexical_context, assign_val_in_class_context,
-    assign_val_in_lexical_context, eval, lookup, setup_func_call, update, update_class_env,
+    assign_val_in_lexical_context, eval, lookup, obj_lookup, setup_func_call, update,
+    update_class_env,
 };
 
 pub fn init_state(static_info: &Static) -> State {
@@ -34,109 +35,165 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
     let mut next_state = match stmt {
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
             if let Some(ast::ExprCall { func, args, .. }) = value.as_call_expr() {
-                let func_name = func.as_name_expr()?.id.as_str();
-                match lookup(func_name, &state.local_env, &state.global_env, &state.store)?.clone()
-                {
-                    StorableValue::DefinitionClosure(func_lineno, func_env) => {
-                        let func_stmt =
-                            static_info.statements[&func_lineno].as_function_def_stmt()?;
-                        let formals = func_stmt
-                            .args
-                            .args
-                            .iter()
-                            .map(|x| x.def.arg.as_str())
-                            .collect::<Vec<_>>();
+                match *func.clone() {
+                    ast::Expr::Name(ast::ExprName { id, .. }) => {
+                        let func_name = id.as_str();
+                        match lookup(func_name, &state.local_env, &state.global_env, &state.store)?
+                            .clone()
+                        {
+                            StorableValue::DefinitionClosure(func_lineno, func_env, formals) => {
+                                if formals.len() != args.len() {
+                                    panic!("Function call with wrong number of arguments");
+                                }
 
-                        if func_stmt.args.args.len() != args.len() {
-                            panic!("Function call with wrong number of arguments");
-                        }
+                                let vals = args
+                                    .iter()
+                                    .map(|x| {
+                                        eval(x, &state.local_env, &state.global_env, &state.store)
+                                    })
+                                    .collect::<Option<Vec<_>>>()?;
 
-                        let vals = args
-                            .iter()
-                            .map(|x| eval(x, &state.local_env, &state.global_env, &state.store))
-                            .collect::<Option<Vec<_>>>()?;
+                                state.stack.push(Context::Lexical(lineno, state.local_env));
 
-                        state.stack.push(Context::Lexical(lineno, state.local_env));
+                                let (new_local_env, new_global_env, new_store) = setup_func_call(
+                                    func_env,
+                                    state.global_env,
+                                    state.store,
+                                    &static_info.decvars[&func_lineno],
+                                    &static_info.globals[&func_lineno],
+                                    formals,
+                                    vals,
+                                )?;
 
-                        let (new_env, new_store) = setup_func_call(
-                            func_env,
-                            &state.global_env,
-                            state.store,
-                            &static_info.decvars[&func_lineno],
-                            formals,
-                            vals,
-                        )?;
+                                State {
+                                    lineno: static_info.block[&func_lineno].0,
+                                    local_env: Some(new_local_env),
+                                    global_env: new_global_env,
+                                    store: new_store,
+                                    ..state
+                                }
+                            }
+                            StorableValue::Object(Object {
+                                class: None,
+                                env_addr,
+                            }) => {
+                                let class_env = state
+                                    .store
+                                    .get(env_addr)
+                                    .and_then(|x| x.as_env().cloned())
+                                    .expect("Object must have an initialized environment");
 
-                        State {
-                            lineno: static_info.block[&func_lineno].0,
-                            local_env: Some(new_env),
-                            store: new_store,
-                            ..state
+                                if let Some(StorableValue::DefinitionClosure(
+                                    func_lineno,
+                                    func_env,
+                                    formals,
+                                )) = lookup("__init__", &None, &class_env, &state.store).cloned()
+                                {
+                                    if formals.len() != args.len() + 1 {
+                                        panic!("Function call with wrong number of arguments");
+                                    }
+
+                                    let mut vals = args
+                                        .iter()
+                                        .map(|x| {
+                                            eval(
+                                                x,
+                                                &state.local_env,
+                                                &state.global_env,
+                                                &state.store,
+                                            )
+                                        })
+                                        .collect::<Option<Vec<_>>>()?;
+
+                                    let obj_env = BTreeMap::new();
+                                    state.store.push(StorableValue::Env(obj_env));
+                                    let obj = Object {
+                                        class: Some(env_addr),
+                                        env_addr: state.store.len() - 1,
+                                    };
+                                    vals.insert(0, StorableValue::Object(obj));
+
+                                    let return_closure = Context::Lexical(lineno, state.local_env);
+                                    state.stack.push(return_closure);
+
+                                    let (new_local_env, new_global_env, new_store) =
+                                        setup_func_call(
+                                            func_env,
+                                            state.global_env,
+                                            state.store,
+                                            &static_info.decvars[&func_lineno],
+                                            &static_info.globals[&func_lineno],
+                                            formals,
+                                            vals,
+                                        )?;
+
+                                    State {
+                                        lineno: static_info.block[&func_lineno].0,
+                                        local_env: Some(new_local_env),
+                                        global_env: new_global_env,
+                                        store: new_store,
+                                        ..state
+                                    }
+                                } else {
+                                    panic!("Class must have a __init__ function")
+                                }
+                            }
+                            _ => panic!("Expected callable"),
                         }
                     }
-                    StorableValue::Object(Object {
-                        class: None,
-                        flat_env_addr,
-                    }) => {
-                        let class_env = state
-                            .store
-                            .get(flat_env_addr)
-                            .and_then(|x| x.as_flat_env().cloned())
-                            .expect("Object must have an initialized flat environment");
-
-                        if let Some(StorableValue::DefinitionClosure(func_lineno, func_env)) =
-                            lookup("__init__", &None, &class_env, &state.store).cloned()
+                    ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+                        let obj_var = value
+                            .as_name_expr()
+                            .expect("Object fields must be accessed directly")
+                            .id
+                            .as_str();
+                        
+                        let method = obj_lookup(
+                            obj_var,
+                            &attr,
+                            &state.local_env,
+                            &state.global_env,
+                            &state.store,
+                        );
+                        if let Some(StorableValue::DefinitionClosure(
+                            func_lineno,
+                            func_env,
+                            formals,
+                        )) = method
                         {
-                            let func_stmt =
-                                static_info.statements[&func_lineno].as_function_def_stmt()?;
-
-                            let formals = func_stmt
-                                .args
-                                .args
-                                .iter()
-                                .map(|x| x.def.arg.as_str())
-                                .collect::<Vec<_>>();
-
-                            if func_stmt.args.args.len() != args.len() + 1 {
+                            if formals.len() != args.len() {
                                 panic!("Function call with wrong number of arguments");
                             }
 
-                            let mut vals = args
+                            let vals = args
                                 .iter()
                                 .map(|x| eval(x, &state.local_env, &state.global_env, &state.store))
                                 .collect::<Option<Vec<_>>>()?;
 
-                            let obj_env = BTreeMap::new();
-                            state.store.push(StorableValue::FlatEnv(obj_env));
-                            let obj = Object {
-                                class: Some(flat_env_addr),
-                                flat_env_addr: state.store.len() - 1,
-                            };
-                            vals.insert(0, StorableValue::Object(obj));
+                            state.stack.push(Context::Lexical(lineno, state.local_env));
 
-                            let return_closure = Context::Lexical(lineno, state.local_env);
-                            state.stack.push(return_closure);
-
-                            let (new_env, new_store) = setup_func_call(
+                            let (new_local_env, new_global_env, new_store) = setup_func_call(
                                 func_env,
-                                &state.global_env,
+                                state.global_env,
                                 state.store,
                                 &static_info.decvars[&func_lineno],
+                                &static_info.globals[&func_lineno],
                                 formals,
                                 vals,
                             )?;
 
                             State {
                                 lineno: static_info.block[&func_lineno].0,
-                                local_env: Some(new_env),
+                                local_env: Some(new_local_env),
+                                global_env: new_global_env,
                                 store: new_store,
                                 ..state
                             }
                         } else {
-                            panic!("Class must have a __init__ function")
+                            panic!("Method call but no associated method found")
                         }
                     }
-                    _ => panic!("Expected callable"),
+                    _ => unimplemented!(),
                 }
             } else {
                 if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
@@ -178,12 +235,17 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
         }
         Stmt::Continue(ast::StmtContinue { .. })
         | Stmt::Break(ast::StmtBreak { .. })
-        | Stmt::Pass(ast::StmtPass { .. }) => State {
+        | Stmt::Pass(ast::StmtPass { .. })
+        | Stmt::Global(ast::StmtGlobal { .. }) => State {
             lineno: static_info.next_stmt[&lineno],
             ..state
         },
-        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) => {
-            let closure = StorableValue::DefinitionClosure(lineno, state.local_env.clone());
+        Stmt::FunctionDef(ast::StmtFunctionDef { name, args, .. }) => {
+            let closure = StorableValue::DefinitionClosure(
+                lineno,
+                state.local_env.clone(),
+                args.args.iter().map(|x| x.def.arg.to_string()).collect(),
+            );
 
             if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
                 state.store = update_class_env(name, closure, class_env, state.store);
@@ -254,7 +316,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             }
         }
         Stmt::Expr(_) => todo!(),
-        Stmt::Global(_) => todo!(),
         Stmt::Nonlocal(_) => todo!(),
         Stmt::Import(_) => todo!(),
         Stmt::ImportFrom(_) => todo!(),
@@ -277,8 +338,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
     while let Some(Context::Class(class_lineno, class_env)) = next_state.stack.last().cloned() {
         if next_state.lineno == static_info.next_stmt[&static_info.block[&class_lineno].1] {
             next_state.stack.pop().unwrap();
-            next_state.store.push(StorableValue::FlatEnv(class_env));
-            let flat_env_addr = next_state.store.len() - 1;
+            next_state.store.push(StorableValue::Env(class_env));
+            let env_addr = next_state.store.len() - 1;
             let class_name = static_info.statements[&class_lineno]
                 .as_class_def_stmt()
                 .unwrap()
@@ -286,7 +347,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 .clone();
             let class_object = StorableValue::Object(Object {
                 class: None,
-                flat_env_addr,
+                env_addr,
             });
 
             if let Some(Context::Class(_, class_env)) = next_state.stack.last_mut() {

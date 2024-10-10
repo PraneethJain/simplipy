@@ -111,7 +111,7 @@ impl<'a> Widget for &App<'_> {
         .areas(area);
 
         let [code_area, state_area] =
-            Layout::horizontal([Constraint::Percentage(20), Constraint::Percentage(80)])
+            Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .areas(main_area);
 
         // title
@@ -205,7 +205,7 @@ impl<'a> Widget for &App<'_> {
                 .iter()
                 .enumerate()
                 .flat_map(|(i, val)| {
-                    if let StorableValue::DefinitionClosure(lineno, env) = val {
+                    if let StorableValue::DefinitionClosure(lineno, env, _) = val {
                         if self.expand_closures {
                             let mut v = vec![Line::from(
                                 format!("{}: ", i).bold().blue()

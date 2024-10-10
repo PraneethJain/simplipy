@@ -1,21 +1,21 @@
 use rustpython_parser::ast::bigint::BigInt;
 use std::collections::BTreeMap;
-use std::ops::{Add, Div, Mul, Rem, Sub};
+use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
 
 pub type Stack = Vec<Context>;
 pub type Store = Vec<StorableValue>;
-pub type FlatEnv = BTreeMap<String, usize>;
+pub type Env = BTreeMap<String, usize>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Context {
-    Lexical(usize, Option<FlatEnv>),
-    Class(usize, FlatEnv),
+    Lexical(usize, Option<Env>),
+    Class(usize, Env),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object {
     pub class: Option<usize>,
-    pub flat_env_addr: usize,
+    pub env_addr: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -26,16 +26,16 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    DefinitionClosure(usize, Option<FlatEnv>),
-    FlatEnv(FlatEnv),
+    DefinitionClosure(usize, Option<Env>, Vec<String>),
+    Env(Env),
     Object(Object),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
     pub lineno: usize,
-    pub global_env: FlatEnv,
-    pub local_env: Option<FlatEnv>,
+    pub global_env: Env,
+    pub local_env: Option<Env>,
     pub stack: Stack,
     pub store: Store,
 }
@@ -143,6 +143,24 @@ impl Rem for StorableValue {
     }
 }
 
+impl Neg for StorableValue {
+    type Output = Option<StorableValue>;
+
+    fn neg(self) -> Option<StorableValue> {
+        match self {
+            StorableValue::Int(a) => Some(StorableValue::Int(-a)),
+            StorableValue::Float(f) => Some(StorableValue::Float(-f)),
+            StorableValue::Bottom
+            | StorableValue::None
+            | StorableValue::Bool(_)
+            | StorableValue::String(_)
+            | StorableValue::DefinitionClosure(_, _, _)
+            | StorableValue::Env(_)
+            | StorableValue::Object(_) => None,
+        }
+    }
+}
+
 impl StorableValue {
     pub fn floordiv(self, other: StorableValue) -> Option<StorableValue> {
         match (self, other) {
@@ -180,9 +198,9 @@ impl StorableValue {
         }
     }
 
-    pub fn as_flat_env(&self) -> Option<&FlatEnv> {
-        if let StorableValue::FlatEnv(flat_env) = self {
-            Some(flat_env)
+    pub fn as_env(&self) -> Option<&Env> {
+        if let StorableValue::Env(env) = self {
+            Some(env)
         } else {
             None
         }
@@ -196,9 +214,9 @@ impl StorableValue {
         }
     }
 
-    pub fn as_mut_flat_env(&mut self) -> Option<&mut FlatEnv> {
-        if let StorableValue::FlatEnv(flat_env) = self {
-            Some(flat_env)
+    pub fn as_mut_env(&mut self) -> Option<&mut Env> {
+        if let StorableValue::Env(env) = self {
+            Some(env)
         } else {
             None
         }

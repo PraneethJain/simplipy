@@ -17,6 +17,7 @@ pub struct Static<'a> {
     pub true_stmt: BTreeMap<usize, usize>,
     pub false_stmt: BTreeMap<usize, usize>,
     pub decvars: BTreeMap<usize, BTreeSet<&'a str>>,
+    pub globals: BTreeMap<usize, BTreeSet<&'a str>>,
     pub block: BTreeMap<usize, (usize, usize)>,
     parent_map: BTreeMap<usize, usize>,
     cur_scope_lineno: usize,
@@ -216,6 +217,7 @@ fn traverse_stmt<'a, 'b>(
                 cur_lineno,
                 BTreeSet::from_iter(args.args.iter().map(|x| x.def.arg.as_str())),
             );
+            static_info.globals.insert(cur_lineno, BTreeSet::new());
             traverse_body(cur_lineno, body, line_index, source, static_info);
             static_info.cur_scope_lineno = old_scope_lineno;
         }
@@ -250,10 +252,16 @@ fn traverse_stmt<'a, 'b>(
             let old_scope_lineno = static_info.cur_scope_lineno;
             static_info.cur_scope_lineno = cur_lineno;
             static_info.decvars.insert(cur_lineno, BTreeSet::new());
+            static_info.globals.insert(cur_lineno, BTreeSet::new());
             traverse_body(cur_lineno, body, line_index, source, static_info);
             static_info.cur_scope_lineno = old_scope_lineno;
         }
         Stmt::Return(_) | Stmt::Pass(_) => {}
+        Stmt::Global(ast::StmtGlobal { names, .. }) => static_info
+            .globals
+            .get_mut(&static_info.cur_scope_lineno)
+            .expect("globals must be created for the scope before assignment")
+            .extend(names.iter().map(|x| x.as_str())),
         _ => {
             println!("{:?}", stmt);
             unimplemented!();
