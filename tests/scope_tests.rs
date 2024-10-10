@@ -7,6 +7,8 @@ use simplipy::{
     utils::lookup,
 };
 
+mod common;
+
 #[test]
 fn test_simple_nesting() {
     let source = r#"
@@ -34,11 +36,11 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(2)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(8)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(2))),
+        ("b", StorableValue::Int(BigInt::from(8)))
+    );
 }
 
 #[test]
@@ -71,11 +73,11 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(2)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(8)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(2))),
+        ("b", StorableValue::Int(BigInt::from(8)))
+    );
 }
 
 #[test]
@@ -106,11 +108,11 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(2)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(8)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(2))),
+        ("b", StorableValue::Int(BigInt::from(8)))
+    );
 }
 
 #[test]
@@ -147,11 +149,11 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(2)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(8)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(2))),
+        ("b", StorableValue::Int(BigInt::from(8)))
+    );
 }
 
 #[test]
@@ -183,11 +185,11 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(11)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(8)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(11))),
+        ("b", StorableValue::Int(BigInt::from(8)))
+    );
 }
 
 #[test]
@@ -218,9 +220,7 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(47)));
+    lookup_and_assert!(state, ("a", StorableValue::Int(BigInt::from(47))));
 }
 
 #[test]
@@ -257,9 +257,7 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(39)));
+    lookup_and_assert!(state, ("a", StorableValue::Int(BigInt::from(39))));
 }
 
 #[test]
@@ -284,6 +282,22 @@ a = t.test()
 b = t.method_and_var()
 c = t.actual_global()
 
+method_and_var = "var"
+class Test:
+    def __init__(self):
+        return self
+    def method_and_var(self):
+        return "method"
+    def test(self):
+        return method_and_var
+    def actual_global(self):
+        return "global"
+
+t = Test()
+d = t.test()
+e = t.method_and_var()
+f = t.actual_global()
+
 pass
 "#;
 
@@ -297,11 +311,13 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::String(String::from("var")));
-    assert_eq!(*b, StorableValue::String(String::from("method")));
-    assert_eq!(*c, StorableValue::String(String::from("global")));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::String(String::from("var"))),
+        ("b", StorableValue::String(String::from("method"))),
+        ("c", StorableValue::String(String::from("global"))),
+        ("d", StorableValue::String(String::from("var"))),
+        ("e", StorableValue::String(String::from("method"))),
+        ("f", StorableValue::String(String::from("global"))),
+    );
 }

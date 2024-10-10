@@ -7,6 +7,8 @@ use simplipy::{
     utils::lookup,
 };
 
+mod common;
+
 #[test]
 fn test_recursion() {
     let source = r#"
@@ -41,11 +43,11 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let z = lookup("z", &state.local_env, &state.global_env, &state.store).unwrap();
-    let i = lookup("i", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*z, StorableValue::Int(BigInt::from(5)));
-    assert_eq!(*i, StorableValue::Int(BigInt::from(3)));
+    lookup_and_assert!(
+        state,
+        ("z", StorableValue::Int(BigInt::from(5))),
+        ("i", StorableValue::Int(BigInt::from(3)))
+    );
 }
 
 #[test]
@@ -72,9 +74,7 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*b, StorableValue::Int(BigInt::from(5)));
+    lookup_and_assert!(state, ("b", StorableValue::Int(BigInt::from(5))),);
 }
 
 #[test]
@@ -107,9 +107,7 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(4)));
+    lookup_and_assert!(state, ("a", StorableValue::Int(BigInt::from(4))),);
 }
 
 #[test]
@@ -139,13 +137,12 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(9)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(9)));
-    assert_eq!(*c, StorableValue::Int(BigInt::from(3)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(9))),
+        ("b", StorableValue::Int(BigInt::from(9))),
+        ("c", StorableValue::Int(BigInt::from(3)))
+    );
 }
 
 #[test]
@@ -180,15 +177,13 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
-    let d = lookup("d", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(15)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(9)));
-    assert_eq!(*c, StorableValue::Int(BigInt::from(3)));
-    assert_eq!(*d, StorableValue::Int(BigInt::from(6)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(15))),
+        ("b", StorableValue::Int(BigInt::from(9))),
+        ("c", StorableValue::Int(BigInt::from(3))),
+        ("d", StorableValue::Int(BigInt::from(6)))
+    );
 }
 
 #[test]
@@ -221,13 +216,12 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let x = lookup("x", &state.local_env, &state.global_env, &state.store).unwrap();
-    let y = lookup("y", &state.local_env, &state.global_env, &state.store).unwrap();
-    let z = lookup("z", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*x, StorableValue::Int(BigInt::from(4)));
-    assert_eq!(*y, StorableValue::Int(BigInt::from(6)));
-    assert_eq!(*z, StorableValue::Int(BigInt::from(5)));
+    lookup_and_assert!(
+        state,
+        ("x", StorableValue::Int(BigInt::from(4))),
+        ("y", StorableValue::Int(BigInt::from(6))),
+        ("z", StorableValue::Int(BigInt::from(5))),
+    );
 }
 
 #[test]
@@ -262,13 +256,12 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let a = lookup("a", &state.local_env, &state.global_env, &state.store).unwrap();
-    let b = lookup("b", &state.local_env, &state.global_env, &state.store).unwrap();
-    let c = lookup("c", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*a, StorableValue::Int(BigInt::from(4)));
-    assert_eq!(*b, StorableValue::Int(BigInt::from(3)));
-    assert_eq!(*c, StorableValue::Int(BigInt::from(10)));
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(4))),
+        ("b", StorableValue::Int(BigInt::from(3))),
+        ("c", StorableValue::Int(BigInt::from(10))),
+    );
 }
 
 #[test]
@@ -298,9 +291,9 @@ pass
         state = tick(state, &static_info).unwrap();
     }
 
-    let z = lookup("z", &state.local_env, &state.global_env, &state.store).unwrap();
-    let w = lookup("w", &state.local_env, &state.global_env, &state.store).unwrap();
-
-    assert_eq!(*z, StorableValue::Int(BigInt::from(3)));
-    assert_eq!(*w, StorableValue::Int(BigInt::from(10)));
+    lookup_and_assert!(
+        state,
+        ("z", StorableValue::Int(BigInt::from(3))),
+        ("w", StorableValue::Int(BigInt::from(10))),
+    );
 }
