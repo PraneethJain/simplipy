@@ -321,3 +321,34 @@ pass
         ("f", StorableValue::String(String::from("global"))),
     );
 }
+
+#[test]
+fn test_recursion() {
+    let source = r#"
+def f(x):
+    def fact(n):
+        if n == 0:
+            return 1
+        else:
+            temp = fact(n - 1)
+            return n * temp
+    temp = fact(x)
+    return temp
+
+a = f(6)
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    lookup_and_assert!(state, ("a", StorableValue::Int(BigInt::from(720))),);
+}
