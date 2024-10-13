@@ -352,3 +352,37 @@ pass
 
     lookup_and_assert!(state, ("a", StorableValue::Int(BigInt::from(720))),);
 }
+
+#[test]
+fn test_class_vs_lexical() {
+    let source = r#"
+def f():
+    return 1
+
+class A:
+    x = f()
+
+    def f(self):
+        return 2
+
+    y = f(10)
+
+x = A.x
+y = A.y
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    lookup_and_assert!(state, ("x", StorableValue::Int(BigInt::from(1))),);
+    lookup_and_assert!(state, ("y", StorableValue::Int(BigInt::from(2))),);
+}

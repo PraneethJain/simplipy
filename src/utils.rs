@@ -50,9 +50,11 @@ pub fn obj_lookup<'a>(
         .expect("Object must have its environment initialized");
     if let Some(val) = lookup(&attr, &None, &obj_env, store).cloned() {
         Some(val)
-    } else if let Some(class_env_addr) = obj.class {
+    } else if let Some(class_env_addr) = obj.metadata.class {
         let class_env = store
             .get(class_env_addr)
+            .and_then(|x| x.as_object())
+            .and_then(|x| store.get(x.env_addr))
             .and_then(|x| x.as_env())
             .expect("Class environment must be initialized");
         let res = class_env_lookup(attr, class_env, store).cloned();
@@ -392,6 +394,57 @@ pub fn setup_func_call(
     }
 
     Some((func_env, global_env, store))
+}
+
+pub fn find_mro(class_idx: usize, bases: Vec<usize>, store: &Store) -> Option<Vec<usize>> {
+    let mut result = vec![class_idx];
+
+    if bases.is_empty() {
+        return Some(result);
+    }
+
+    let mut seqs: Vec<_> = bases
+        .iter()
+        .map(|&idx| {
+            store
+                .get(idx)
+                .and_then(|x| x.as_object())
+                .and_then(|x| x.metadata.mro.clone())
+                .expect("Base class must have its own mro")
+        })
+        .collect();
+    seqs.push(bases);
+
+    result.extend(merge(seqs)?);
+    Some(result)
+}
+
+fn merge(mut seqs: Vec<Vec<usize>>) -> Option<Vec<usize>> {
+    let mut result = Vec::new();
+
+    while !seqs.iter().all(|seq| seq.is_empty()) {
+        let candidate = find_candidate(&seqs)?;
+        result.push(candidate);
+
+        for seq in &mut seqs {
+            seq.retain(|&c| c != candidate);
+        }
+        seqs.retain(|seq| !seq.is_empty());
+    }
+
+    Some(result)
+}
+
+fn find_candidate(seqs: &[Vec<usize>]) -> Option<usize> {
+    for seq in seqs {
+        if let Some(&head) = seq.first() {
+            if !seqs.iter().any(|s| s.len() > 1 && s[1..].contains(&head)) {
+                return Some(head);
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

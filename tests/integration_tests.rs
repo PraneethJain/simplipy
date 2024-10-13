@@ -4,7 +4,7 @@ use simplipy::{
     datatypes::StorableValue,
     preprocess::preprocess_module,
     state::{init_state, is_fixed_point, tick},
-    utils::lookup,
+    utils::{env_lookup, lookup},
 };
 
 mod common;
@@ -296,4 +296,134 @@ pass
         ("z", StorableValue::Int(BigInt::from(3))),
         ("w", StorableValue::Int(BigInt::from(10))),
     );
+}
+
+#[test]
+fn test_mro() {
+    let source = r#"
+class A:
+    pass
+
+class B(A):
+    pass
+
+class C(A):
+    pass
+
+class D(B, C):
+    pass
+
+pass
+"#;
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    let class_d = lookup("D", &state.local_env, &state.global_env, &state.store)
+        .and_then(|x| x.as_object().cloned())
+        .unwrap();
+    let calculated_mro = class_d.metadata.mro.unwrap();
+    let expected_mro: Vec<usize> = vec!["D", "B", "C", "A"]
+        .iter()
+        .map(|x| env_lookup(x, &state.local_env, &state.global_env).unwrap())
+        .collect();
+
+    assert_eq!(calculated_mro, expected_mro);
+}
+
+#[test]
+fn test_complex_mro() {
+    let source = r#"
+class A:
+    pass
+
+class B(A):
+    pass
+
+class C(A):
+    pass
+
+class D(B, C):
+    pass
+
+class E:
+    pass
+
+class F(D, E):
+    pass
+
+class G(E):
+    pass
+
+class H(F, G):
+    pass
+
+class I:
+    pass
+
+class J(I):
+    pass
+
+class Complex(H, J):
+    pass
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    let get_class_idx = |name: &str| env_lookup(name, &state.local_env, &state.global_env).unwrap();
+
+    let test_cases = vec![
+        ("A", vec!["A"]),
+        ("B", vec!["B", "A"]),
+        ("C", vec!["C", "A"]),
+        ("D", vec!["D", "B", "C", "A"]),
+        ("E", vec!["E"]),
+        ("F", vec!["F", "D", "B", "C", "A", "E"]),
+        ("G", vec!["G", "E"]),
+        ("H", vec!["H", "F", "D", "B", "C", "A", "G", "E"]),
+        ("I", vec!["I"]),
+        ("J", vec!["J", "I"]),
+        (
+            "Complex",
+            vec!["Complex", "H", "F", "D", "B", "C", "A", "G", "E", "J", "I"],
+        ),
+    ];
+
+    for (class_name, expected_mro_names) in test_cases {
+        let class = lookup(
+            class_name,
+            &state.local_env,
+            &state.global_env,
+            &state.store,
+        )
+        .and_then(|x| x.as_object().cloned())
+        .unwrap();
+        let calculated_mro = class.metadata.mro.unwrap();
+        let expected_mro: Vec<usize> = expected_mro_names
+            .into_iter()
+            .map(|name| get_class_idx(name))
+            .collect();
+
+        assert_eq!(
+            calculated_mro, expected_mro,
+            "MRO mismatch for class {}",
+            class_name
+        );
+    }
 }

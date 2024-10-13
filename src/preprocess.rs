@@ -240,9 +240,7 @@ fn traverse_stmt<'a, 'b>(
                     .insert(var);
             }
         }
-        Stmt::ClassDef(ast::StmtClassDef {
-            name, bases, body, ..
-        }) => {
+        Stmt::ClassDef(ast::StmtClassDef { name, body, .. }) => {
             static_info
                 .decvars
                 .get_mut(&static_info.cur_scope_lineno)
@@ -266,7 +264,6 @@ fn traverse_stmt<'a, 'b>(
             println!("{:?}", stmt);
             unimplemented!();
         } // Stmt::Expr(_) => todo!(),
-          // Stmt::Global(_) => todo!(),
           // Stmt::Nonlocal(_) => todo!(),
           // Stmt::Import(_) => todo!(),
           // Stmt::ImportFrom(_) => todo!(),
@@ -311,28 +308,28 @@ z = x + y
 
     #[test]
     fn if_statement() {
-        let source = r#"            # 1
-x = 3                               # 2
-y = 6                               # 3
-if True:                            # 4
-    if True:                        # 5
-        if True:                    # 6
-            z = x + y               # 7
-        else:                       # 8
-            y = x                   # 9
-            if False:               # 10
-                if True:            # 11
-                    z = 2           # 12
-                else:               # 13
-                    z = 3           # 14
-                                    # 15
-if False:                           # 16
-    if True:                        # 17
-        z = 10                      # 18
-    else:                           # 19
-        z = 20                      # 20
-                                    # 21
-z = x + y                           # 22
+        let source = r#"            
+x = 3                               
+y = 6                               
+if True:                            
+    if True:                        
+        if True:                    
+            z = x + y               
+        else:                       
+            y = x                   
+            if False:               
+                if True:            
+                    z = 2           
+                else:               
+                    z = 3           
+                                    
+if False:                           
+    if True:                        
+        z = 10                      
+    else:                           
+        z = 20                      
+                                    
+z = x + y                           
 "#;
 
         let ast = parse(source, Mode::Module, "<embedded>").unwrap();

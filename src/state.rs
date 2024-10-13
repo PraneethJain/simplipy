@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use rustpython_parser::ast::{self, Stmt};
 
-use crate::datatypes::{Context, Object, State, StorableValue};
+use crate::datatypes::{Context, Object, ObjectMetadata, State, StorableValue};
 use crate::preprocess::Static;
 use crate::utils::{
     assign_in_class_context, assign_in_lexical_context, assign_val_in_class_context,
-    assign_val_in_lexical_context, eval, lookup, obj_lookup, setup_func_call, update,
-    update_class_env,
+    assign_val_in_lexical_context, env_lookup, eval, find_mro, lookup, obj_lookup, setup_func_call,
+    update, update_class_env,
 };
 
 pub fn init_state(static_info: &Static) -> State {
@@ -37,10 +37,14 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             if let Some(ast::ExprCall { func, args, .. }) = value.as_call_expr() {
                 match *func.clone() {
                     ast::Expr::Name(ast::ExprName { id, .. }) => {
+                        let mut lookup_env = state.local_env.clone().unwrap_or_default();
+                        if let Some(Context::Class(_, class_env)) = state.stack.last() {
+                            lookup_env.extend(class_env.clone());
+                        }
                         let func_name = id.as_str();
-                        match lookup(func_name, &state.local_env, &state.global_env, &state.store)?
-                            .clone()
-                        {
+                        let func_addr =
+                            env_lookup(func_name, &Some(lookup_env), &state.global_env)?;
+                        match state.store.get(func_addr).unwrap().clone() {
                             StorableValue::DefinitionClosure(func_lineno, func_env, formals) => {
                                 if formals.len() != args.len() {
                                     panic!("Function call with wrong number of arguments");
@@ -74,8 +78,9 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                                 }
                             }
                             StorableValue::Object(Object {
-                                class: None,
+                                metadata: ObjectMetadata { class: None, .. },
                                 env_addr,
+                                ..
                             }) => {
                                 let class_env = state
                                     .store
@@ -108,7 +113,10 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                                     let obj_env = BTreeMap::new();
                                     state.store.push(StorableValue::Env(obj_env));
                                     let obj = Object {
-                                        class: Some(env_addr),
+                                        metadata: ObjectMetadata {
+                                            class: Some(func_addr),
+                                            mro: None,
+                                        },
                                         env_addr: state.store.len() - 1,
                                     };
                                     vals.insert(0, StorableValue::Object(obj));
@@ -308,7 +316,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                 panic!("Lexical context should be present at the top of the stack for a return")
             }
         }
-        Stmt::ClassDef(ast::StmtClassDef { name, bases, .. }) => {
+        Stmt::ClassDef(ast::StmtClassDef { .. }) => {
             state.stack.push(Context::Class(lineno, BTreeMap::new()));
             State {
                 lineno: static_info.block[&lineno].0,
@@ -340,30 +348,84 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             next_state.stack.pop().unwrap();
             next_state.store.push(StorableValue::Env(class_env));
             let env_addr = next_state.store.len() - 1;
-            let class_name = static_info.statements[&class_lineno]
+            let ast::StmtClassDef {
+                name: class_name,
+                bases,
+                ..
+            } = static_info.statements[&class_lineno]
                 .as_class_def_stmt()
-                .unwrap()
-                .name
-                .clone();
-            let class_object = StorableValue::Object(Object {
-                class: None,
+                .unwrap();
+            let base_class_addrs: Vec<usize> =
+                if let Some(Context::Class(_, class_env)) = next_state.stack.last() {
+                    let mut lookup_env = next_state.local_env.clone().unwrap_or_default();
+                    lookup_env.extend(class_env.clone());
+                    bases
+                        .iter()
+                        .map(|base| {
+                            env_lookup(
+                                &base
+                                    .as_name_expr()
+                                    .expect("Base classes must be identifiers")
+                                    .id,
+                                &Some(lookup_env.clone()),
+                                &next_state.global_env,
+                            )
+                            .expect("Base classes must be initialized")
+                        })
+                        .collect()
+                } else {
+                    bases
+                        .iter()
+                        .map(|base| {
+                            env_lookup(
+                                &base
+                                    .as_name_expr()
+                                    .expect("Base classes must be identifiers")
+                                    .id,
+                                &next_state.local_env,
+                                &next_state.global_env,
+                            )
+                            .expect("Base classes must be initialized")
+                        })
+                        .collect()
+                };
+            let mut class_object = Object {
+                metadata: ObjectMetadata {
+                    class: None,
+                    mro: None,
+                },
                 env_addr,
-            });
+            };
 
             if let Some(Context::Class(_, class_env)) = next_state.stack.last_mut() {
                 class_env
                     .entry(class_name.to_string())
-                    .and_modify(|idx| {
-                        next_state.store[*idx] = class_object.clone();
+                    .and_modify(|&mut class_idx| {
+                        class_object.metadata.mro = Some(
+                            find_mro(class_idx, base_class_addrs.clone(), &next_state.store)
+                                .expect("MRO exists for class"),
+                        );
+                        next_state.store[class_idx] = StorableValue::Object(class_object.clone());
                     })
                     .or_insert_with(|| {
-                        next_state.store.push(class_object);
-                        next_state.store.len() - 1
+                        let class_idx = next_state.store.len();
+                        class_object.metadata.mro = Some(
+                            find_mro(class_idx, base_class_addrs.clone(), &next_state.store)
+                                .expect("MRO exists for class"),
+                        );
+                        next_state.store.push(StorableValue::Object(class_object));
+                        class_idx
                     });
             } else {
+                let class_idx =
+                    env_lookup(&class_name, &next_state.local_env, &next_state.global_env)?;
+                class_object.metadata.mro = Some(
+                    find_mro(class_idx, base_class_addrs.clone(), &next_state.store)
+                        .expect("MRO exists for class"),
+                );
                 next_state.store = update(
                     class_name.as_str(),
-                    class_object,
+                    StorableValue::Object(class_object),
                     &next_state.local_env,
                     &next_state.global_env,
                     next_state.store,

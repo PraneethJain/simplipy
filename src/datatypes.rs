@@ -14,8 +14,14 @@ pub enum Context {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object {
-    pub class: Option<usize>,
+    pub metadata: ObjectMetadata,
     pub env_addr: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectMetadata {
+    pub class: Option<usize>,
+    pub mro: Option<Vec<usize>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
