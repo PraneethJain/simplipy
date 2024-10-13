@@ -427,3 +427,91 @@ pass
         );
     }
 }
+
+#[test]
+fn test_mro_usage() {
+    let source = r#"
+class A:
+    def method1(self):
+        return "A.method1"
+    
+    def method2(self):
+        return "A.method2"
+
+class B(A):
+    def method1(self):
+        return "B.method1"
+    
+    def method3(self):
+        return "B.method3"
+
+class C(A):
+    def method2(self):
+        return "C.method2"
+
+class D(B, C):
+    def method3(self):
+        return "D.method3"
+
+class E:
+    def method1(self):
+        return "E.method1"
+    
+    def method4(self):
+        return "E.method4"
+
+class F(D, E):
+    def method4(self):
+        return "F.method4"
+
+class G:
+    def method5(self):
+        return "G.method5"
+
+class Complex(F, G):
+    def __init__(self):
+        return self
+
+    def method5(self):
+        return "Complex.method5"
+
+obj = Complex()
+
+result1 = obj.method1()
+result2 = obj.method2()
+result3 = obj.method3()
+result4 = obj.method4()
+result5 = obj.method5()
+
+expected1 = "B.method1"
+expected2 = "C.method2"
+expected3 = "D.method3"
+expected4 = "F.method4"
+expected5 = "Complex.method5"
+
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    lookup_and_assert!(
+        state,
+        ("result1", StorableValue::String(String::from("B.method1"))),
+        ("result2", StorableValue::String(String::from("C.method2"))),
+        ("result3", StorableValue::String(String::from("D.method3"))),
+        ("result4", StorableValue::String(String::from("F.method4"))),
+        (
+            "result5",
+            StorableValue::String(String::from("Complex.method5"))
+        ),
+    );
+}

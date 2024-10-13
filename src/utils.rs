@@ -22,15 +22,26 @@ pub fn lookup<'a>(
     env_lookup(var, local_env, global_env).and_then(|idx| store.get(idx))
 }
 
-pub fn class_env_lookup<'a>(
-    attr: &str,
-    class_env: &Env,
-    store: &'a Store,
-) -> Option<&'a StorableValue> {
-    let idx = *class_env.get(attr)?;
-    store.get(idx)
-
-    // lookup through mro here when doing inheritance
+fn class_lookup<'a>(attr: &str, class_addr: usize, store: &'a Store) -> Option<&'a StorableValue> {
+    store
+        .get(class_addr)
+        .and_then(|x| x.as_object())
+        .and_then(|x| x.metadata.mro.clone())
+        .expect("Class must already be initialized with mro")
+        .iter()
+        .find_map(|&addr| {
+            let env = store
+                .get(addr)
+                .and_then(|x| x.as_object())
+                .and_then(|x| store.get(x.env_addr))
+                .and_then(|x| x.as_env())
+                .expect("Class environment must be initialized");
+            if env.contains_key(attr) {
+                Some(store.get(env[attr])?)
+            } else {
+                None
+            }
+        })
 }
 
 pub fn obj_lookup<'a>(
@@ -40,30 +51,28 @@ pub fn obj_lookup<'a>(
     global_env: &Env,
     store: &'a Store,
 ) -> Option<StorableValue> {
-    let obj = lookup(obj_var, local_env, global_env, store)?
-        .as_object()
+    let obj_addr = env_lookup(obj_var, local_env, global_env)?;
+    let obj = store
+        .get(obj_addr)
+        .and_then(|x| x.as_object())
         .expect("Object must be stored as object type");
-    let obj_idx = env_lookup(obj_var, local_env, global_env)?;
+
     let obj_env = store
         .get(obj.env_addr)
         .and_then(|x| x.as_env().cloned())
         .expect("Object must have its environment initialized");
     if let Some(val) = lookup(&attr, &None, &obj_env, store).cloned() {
-        Some(val)
-    } else if let Some(class_env_addr) = obj.metadata.class {
-        let class_env = store
-            .get(class_env_addr)
-            .and_then(|x| x.as_object())
-            .and_then(|x| store.get(x.env_addr))
-            .and_then(|x| x.as_env())
-            .expect("Class environment must be initialized");
-        let res = class_env_lookup(attr, class_env, store).cloned();
+        return Some(val);
+    }
+
+    if let Some(class_addr) = obj.metadata.class {
+        let res = class_lookup(attr, class_addr, store).cloned();
 
         if let Some(StorableValue::DefinitionClosure(func_lineno, func_env, mut formals)) = res {
             // return a bound method
             let mut func_env = func_env.unwrap_or_default();
             let self_var = formals.remove(0);
-            func_env.insert(self_var, obj_idx);
+            func_env.insert(self_var, obj_addr);
             Some(StorableValue::DefinitionClosure(
                 func_lineno,
                 Some(func_env),
@@ -73,7 +82,7 @@ pub fn obj_lookup<'a>(
             res
         }
     } else {
-        None
+        class_lookup(attr, obj_addr, store).cloned()
     }
 }
 
@@ -179,7 +188,6 @@ pub fn eval(
             }))
         }
         Expr::NamedExpr(_) => todo!(),
-
         Expr::Lambda(_) => todo!(),
         Expr::IfExp(_) => todo!(),
         Expr::Dict(_) => todo!(),
