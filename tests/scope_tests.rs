@@ -386,3 +386,37 @@ pass
     lookup_and_assert!(state, ("x", StorableValue::Int(BigInt::from(1))),);
     lookup_and_assert!(state, ("y", StorableValue::Int(BigInt::from(2))),);
 }
+
+#[test]
+fn test_global() {
+    let source = r#"
+def g():
+    x = 4
+    def f():
+        global x
+        x = 2
+        return 5
+    return f
+
+f = g()
+a = f()    
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    lookup_and_assert!(
+        state,
+        ("a", StorableValue::Int(BigInt::from(5))),
+        ("x", StorableValue::Int(BigInt::from(2)))
+    );
+}

@@ -17,11 +17,7 @@ pub fn init_state(static_info: &Static) -> State {
             .keys()
             .min()
             .expect("Atleast one statement should be present"),
-        global_env: static_info.decvars[&0]
-            .iter()
-            .enumerate()
-            .map(|(a, b)| (b.to_string(), a))
-            .collect(),
+        global_env: BTreeMap::new(),
         local_env: None,
         stack: vec![],
         store: vec![StorableValue::Bottom; static_info.decvars[&0].len()],
@@ -59,9 +55,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                                 state.stack.push(Context::Lexical(lineno, state.local_env));
 
-                                let (new_local_env, new_global_env, new_store) = setup_func_call(
+                                let (new_local_env, new_store) = setup_func_call(
                                     func_env,
-                                    state.global_env,
                                     state.store,
                                     &static_info.decvars[&func_lineno],
                                     &static_info.globals[&func_lineno],
@@ -72,7 +67,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                                 State {
                                     lineno: static_info.block[&func_lineno].0,
                                     local_env: Some(new_local_env),
-                                    global_env: new_global_env,
                                     store: new_store,
                                     ..state
                                 }
@@ -124,21 +118,18 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                                     let return_closure = Context::Lexical(lineno, state.local_env);
                                     state.stack.push(return_closure);
 
-                                    let (new_local_env, new_global_env, new_store) =
-                                        setup_func_call(
-                                            func_env,
-                                            state.global_env,
-                                            state.store,
-                                            &static_info.decvars[&func_lineno],
-                                            &static_info.globals[&func_lineno],
-                                            formals,
-                                            vals,
-                                        )?;
+                                    let (new_local_env, new_store) = setup_func_call(
+                                        func_env,
+                                        state.store,
+                                        &static_info.decvars[&func_lineno],
+                                        &static_info.globals[&func_lineno],
+                                        formals,
+                                        vals,
+                                    )?;
 
                                     State {
                                         lineno: static_info.block[&func_lineno].0,
                                         local_env: Some(new_local_env),
-                                        global_env: new_global_env,
                                         store: new_store,
                                         ..state
                                     }
@@ -180,9 +171,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                             state.stack.push(Context::Lexical(lineno, state.local_env));
 
-                            let (new_local_env, new_global_env, new_store) = setup_func_call(
+                            let (new_local_env, new_store) = setup_func_call(
                                 func_env,
-                                state.global_env,
                                 state.store,
                                 &static_info.decvars[&func_lineno],
                                 &static_info.globals[&func_lineno],
@@ -193,7 +183,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                             State {
                                 lineno: static_info.block[&func_lineno].0,
                                 local_env: Some(new_local_env),
-                                global_env: new_global_env,
                                 store: new_store,
                                 ..state
                             }
@@ -214,11 +203,11 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                         state.store,
                     )?;
                 } else {
-                    state.store = assign_in_lexical_context(
+                    (state.global_env, state.store) = assign_in_lexical_context(
                         &targets[0],
                         value,
                         &state.local_env,
-                        &state.global_env,
+                        state.global_env,
                         state.store,
                     )?;
                 }
@@ -258,11 +247,11 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             if let Some(Context::Class(_, class_env)) = state.stack.last_mut() {
                 state.store = update_class_env(name, closure, class_env, state.store);
             } else {
-                state.store = update(
+                (state.global_env, state.store) = update(
                     name,
                     closure,
                     &state.local_env,
-                    &state.global_env,
+                    state.global_env,
                     state.store,
                 )?;
             }
@@ -298,11 +287,11 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                         state.store,
                     )?;
                 } else {
-                    state.store = assign_val_in_lexical_context(
+                    (state.global_env, state.store) = assign_val_in_lexical_context(
                         &targets[0],
                         val,
                         &ret_env,
-                        &state.global_env,
+                        state.global_env,
                         state.store,
                     )?;
                 }
@@ -417,17 +406,24 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                         class_idx
                     });
             } else {
-                let class_idx =
-                    env_lookup(&class_name, &next_state.local_env, &next_state.global_env)?;
+                let class_idx = if next_state.local_env.is_none() {
+                    *next_state
+                        .global_env
+                        .get(&class_name.to_string())
+                        .unwrap_or(&next_state.store.len())
+                } else {
+                    env_lookup(&class_name, &next_state.local_env, &next_state.global_env)?
+                };
+
                 class_object.metadata.mro = Some(
                     find_mro(class_idx, base_class_addrs.clone(), &next_state.store)
                         .expect("MRO exists for class"),
                 );
-                next_state.store = update(
+                (next_state.global_env, next_state.store) = update(
                     class_name.as_str(),
                     StorableValue::Object(class_object),
                     &next_state.local_env,
-                    &next_state.global_env,
+                    next_state.global_env,
                     next_state.store,
                 )?;
             }

@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use rustpython_parser::ast::{self, Expr, Identifier};
 
@@ -214,14 +214,17 @@ pub fn update(
     var: &str,
     val: StorableValue,
     local_env: &Option<Env>,
-    global_env: &Env,
+    mut global_env: Env,
     mut store: Store,
-) -> Option<Store> {
-    let store_idx = env_lookup(var, local_env, global_env)?;
-    let store_val = store.get_mut(store_idx)?;
-    *store_val = val;
+) -> Option<(Env, Store)> {
+    if let Some(store_idx) = env_lookup(var, local_env, &global_env) {
+        *store.get_mut(store_idx)? = val;
+    } else {
+        global_env.insert(var.to_string(), store.len());
+        store.push(val);
+    }
 
-    Some(store)
+    Some((global_env, store))
 }
 
 pub fn update_obj(
@@ -316,10 +319,10 @@ pub fn assign_in_lexical_context(
     var: &Expr,
     value: &Expr,
     local_env: &Option<Env>,
-    global_env: &Env,
+    global_env: Env,
     store: Store,
-) -> Option<Store> {
-    let val = eval(value, local_env, global_env, &store)?;
+) -> Option<(Env, Store)> {
+    let val = eval(value, local_env, &global_env, &store)?;
     assign_val_in_lexical_context(var, val, local_env, global_env, store)
 }
 
@@ -327,15 +330,15 @@ pub fn assign_val_in_lexical_context(
     var: &Expr,
     val: StorableValue,
     local_env: &Option<Env>,
-    global_env: &Env,
+    mut global_env: Env,
     mut store: Store,
-) -> Option<Store> {
+) -> Option<(Env, Store)> {
     match var {
         ast::Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
             let obj = lookup(
                 value.as_name_expr().unwrap().id.as_str(),
                 local_env,
-                global_env,
+                &global_env,
                 &store,
             )?
             .as_object()
@@ -344,42 +347,25 @@ pub fn assign_val_in_lexical_context(
             store = update_obj(attr.to_string(), val, &obj, store)?;
         }
         ast::Expr::Name(name) => {
-            store = update(&name.id, val, local_env, global_env, store)?;
+            (global_env, store) = update(&name.id, val, local_env, global_env, store)?;
         }
         _ => unimplemented!(),
     }
 
-    Some(store)
-}
-
-pub fn update_in_global_env(
-    var: String,
-    val: StorableValue,
-    mut global_env: Env,
-    mut store: Store,
-) -> (Env, Store) {
-    global_env
-        .entry(var)
-        .and_modify(|x| store[*x] = val.clone())
-        .or_insert_with(|| {
-            store.push(val);
-            store.len() - 1
-        });
-
-    (global_env, store)
+    Some((global_env, store))
 }
 
 pub fn setup_func_call(
     func_env: Option<Env>,
-    mut global_env: Env,
     mut store: Store,
     decvars: &BTreeSet<&str>,
     globals: &BTreeSet<&str>,
     formals: Vec<String>,
     vals: Vec<StorableValue>,
-) -> Option<(Env, Env, Store)> {
+) -> Option<(Env, Store)> {
     let n = store.len();
     let mut func_env = func_env.unwrap_or_default();
+    func_env.retain(|a, _| !globals.contains(a.as_str()));
     func_env.extend(
         decvars
             .iter()
@@ -389,19 +375,11 @@ pub fn setup_func_call(
     );
     store.extend(vec![StorableValue::Bottom; func_env.len()]);
 
-    for var in globals {
-        let var_str = var.to_string();
-        if !global_env.contains_key(&var_str) {
-            (global_env, store) =
-                update_in_global_env(var_str, StorableValue::Bottom, global_env, store);
-        }
-    }
-
     for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
-        store = update(&formal, val, &Some(func_env.clone()), &global_env, store)?;
+        store[func_env[&formal]] = val;
     }
 
-    Some((func_env, global_env, store))
+    Some((func_env, store))
 }
 
 pub fn find_mro(class_idx: usize, bases: Vec<usize>, store: &Store) -> Option<Vec<usize>> {

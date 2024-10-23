@@ -146,6 +146,41 @@ pass
 }
 
 #[test]
+fn test_class_in_func() {
+    let source = r#"
+def f():
+    class A:
+        a = 2
+    
+    return A
+
+class A:
+    a = 4
+
+x = A.a
+A = f()
+y = A.a
+
+pass
+"#;
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    while !is_fixed_point(&state, &static_info) {
+        state = tick(state, &static_info).unwrap();
+    }
+
+    lookup_and_assert!(
+        state,
+        ("x", StorableValue::Int(BigInt::from(4))),
+        ("y", StorableValue::Int(BigInt::from(2))),
+    );
+}
+
+#[test]
 fn test_class_sharing() {
     let source = r#"
 x = 3
