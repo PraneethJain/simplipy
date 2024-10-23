@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use rustpython_parser::ast::{self, Expr, Identifier};
 
