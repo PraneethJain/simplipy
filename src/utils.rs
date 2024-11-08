@@ -19,7 +19,15 @@ pub fn lookup<'a>(
     global_env: &Env,
     store: &'a Store,
 ) -> Option<&'a StorableValue> {
-    env_lookup(var, local_env, global_env).and_then(|idx| store.get(idx))
+    if let Some(val) = env_lookup(var, local_env, global_env).and_then(|idx| store.get(idx)) {
+        if *val == StorableValue::Bottom {
+            None
+        } else {
+            Some(val)
+        }
+    } else {
+        None
+    }
 }
 
 fn class_lookup<'a>(attr: &str, class_addr: usize, store: &'a Store) -> Option<&'a StorableValue> {
