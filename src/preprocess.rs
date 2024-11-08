@@ -19,6 +19,7 @@ pub struct Static<'a> {
     pub decvars: BTreeMap<usize, BTreeSet<&'a str>>,
     pub globals: BTreeMap<usize, BTreeSet<&'a str>>,
     pub block: BTreeMap<usize, (usize, usize)>,
+    nonlocals: BTreeMap<usize, BTreeSet<&'a str>>,
     parent_map: BTreeMap<usize, usize>,
     cur_scope_lineno: usize,
 }
@@ -218,7 +219,13 @@ fn traverse_stmt<'a, 'b>(
                 BTreeSet::from_iter(args.args.iter().map(|x| x.def.arg.as_str())),
             );
             static_info.globals.insert(cur_lineno, BTreeSet::new());
+            static_info.nonlocals.insert(cur_lineno, BTreeSet::new());
             traverse_body(cur_lineno, body, line_index, source, static_info);
+            static_info
+                .decvars
+                .get_mut(&cur_lineno)
+                .unwrap()
+                .retain(|x| !static_info.nonlocals.get(&cur_lineno).unwrap().contains(x));
             static_info.cur_scope_lineno = old_scope_lineno;
         }
         Stmt::Assign(ast::StmtAssign { targets, .. }) => {
@@ -251,10 +258,21 @@ fn traverse_stmt<'a, 'b>(
             static_info.cur_scope_lineno = cur_lineno;
             static_info.decvars.insert(cur_lineno, BTreeSet::new());
             static_info.globals.insert(cur_lineno, BTreeSet::new());
+            static_info.nonlocals.insert(cur_lineno, BTreeSet::new());
             traverse_body(cur_lineno, body, line_index, source, static_info);
+            static_info
+                .decvars
+                .get_mut(&cur_lineno)
+                .unwrap()
+                .retain(|x| !static_info.nonlocals.get(&cur_lineno).unwrap().contains(x));
             static_info.cur_scope_lineno = old_scope_lineno;
         }
         Stmt::Return(_) | Stmt::Pass(_) => {}
+        Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => static_info
+            .nonlocals
+            .get_mut(&static_info.cur_scope_lineno)
+            .expect("nonlocals must be created for the scope before assignment")
+            .extend(names.iter().map(|x| x.as_str())),
         Stmt::Global(ast::StmtGlobal { names, .. }) => static_info
             .globals
             .get_mut(&static_info.cur_scope_lineno)
@@ -264,7 +282,6 @@ fn traverse_stmt<'a, 'b>(
             println!("{:?}", stmt);
             unimplemented!();
         } // Stmt::Expr(_) => todo!(),
-          // Stmt::Nonlocal(_) => todo!(),
           // Stmt::Import(_) => todo!(),
           // Stmt::ImportFrom(_) => todo!(),
           // Stmt::Try(_) => todo!(),

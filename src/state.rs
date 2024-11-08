@@ -233,7 +233,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
         Stmt::Continue(ast::StmtContinue { .. })
         | Stmt::Break(ast::StmtBreak { .. })
         | Stmt::Pass(ast::StmtPass { .. })
-        | Stmt::Global(ast::StmtGlobal { .. }) => State {
+        | Stmt::Global(ast::StmtGlobal { .. })
+        | Stmt::Nonlocal(ast::StmtNonlocal { .. }) => State {
             lineno: static_info.next_stmt[&lineno],
             ..state
         },
@@ -313,7 +314,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             }
         }
         Stmt::Expr(_) => todo!(),
-        Stmt::Nonlocal(_) => todo!(),
         Stmt::Import(_) => todo!(),
         Stmt::ImportFrom(_) => todo!(),
         Stmt::Try(_) => todo!(),
