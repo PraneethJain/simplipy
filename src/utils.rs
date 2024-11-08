@@ -131,7 +131,8 @@ pub fn eval(
             use ast::UnaryOp;
             match op {
                 UnaryOp::USub => -val,
-                UnaryOp::Not | UnaryOp::UAdd | UnaryOp::Invert => todo!(),
+                UnaryOp::Not => !val,
+                UnaryOp::UAdd | UnaryOp::Invert => todo!(),
             }
         }
         Expr::BinOp(ast::ExprBinOp {

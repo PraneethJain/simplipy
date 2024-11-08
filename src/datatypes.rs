@@ -1,6 +1,6 @@
 use rustpython_parser::ast::bigint::BigInt;
 use std::collections::BTreeMap;
-use std::ops::{Add, Div, Mul, Neg, Rem, Sub};
+use std::ops::{Add, Div, Mul, Neg, Not, Rem, Sub};
 
 pub type Stack = Vec<Context>;
 pub type Store = Vec<StorableValue>;
@@ -121,6 +121,24 @@ impl Div for StorableValue {
                 }
             }
             _ => None,
+        }
+    }
+}
+
+impl Not for StorableValue {
+    type Output = Option<StorableValue>;
+
+    fn not(self) -> Option<StorableValue> {
+        match self {
+            StorableValue::Bool(b) => Some(StorableValue::Bool(!b)),
+            StorableValue::Bottom
+            | StorableValue::None
+            | StorableValue::Int(_)
+            | StorableValue::Float(_)
+            | StorableValue::String(_)
+            | StorableValue::DefinitionClosure(_, _, _)
+            | StorableValue::Env(_)
+            | StorableValue::Object(_) => None,
         }
     }
 }
