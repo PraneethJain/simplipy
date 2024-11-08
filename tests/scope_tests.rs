@@ -420,3 +420,85 @@ pass
         ("x", StorableValue::Int(BigInt::from(2)))
     );
 }
+
+#[test]
+fn test_unbound_local_1() {
+    let source = r#"
+def errorInOuter():
+    x = y
+    def inner():
+        return y
+    y = 1
+    return None
+
+def errorInInner():
+    def inner():
+        return y
+    x = inner()
+    y = 1
+    return None
+
+_ = errorInOuter()
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    let mut error = false;
+    while !is_fixed_point(&state, &static_info) {
+        let temp = tick(state, &static_info);
+        if temp == None {
+            error = true;
+            break;
+        }
+        state = temp.unwrap()
+    }
+
+    assert!(error);
+}
+
+#[test]
+fn test_unbound_local_2() {
+    let source = r#"
+def errorInOuter():
+    x = y
+    def inner():
+        return y
+    y = 1
+    return None
+
+def errorInInner():
+    def inner():
+        return y
+    x = inner()
+    y = 1
+    return None
+
+_ = errorInInner()
+
+pass
+"#;
+
+    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
+    let line_index = LineIndex::from_source_text(source);
+    let module = ast.as_module().unwrap();
+    let static_info = preprocess_module(module, &line_index, &source);
+    let mut state = init_state(&static_info);
+
+    let mut error = false;
+    while !is_fixed_point(&state, &static_info) {
+        let temp = tick(state, &static_info);
+        if temp == None {
+            error = true;
+            break;
+        }
+        state = temp.unwrap()
+    }
+
+    assert!(error);
+}
