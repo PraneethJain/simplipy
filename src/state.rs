@@ -20,7 +20,7 @@ pub fn init_state(static_info: &Static) -> State {
         global_env: BTreeMap::new(),
         local_env: None,
         stack: vec![],
-        store: vec![StorableValue::Bottom; static_info.decvars[&0].len()],
+        store: vec![],
     }
 }
 

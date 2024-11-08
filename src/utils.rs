@@ -373,7 +373,7 @@ pub fn setup_func_call(
             .enumerate()
             .map(|(i, x)| (x.to_string(), n + i)),
     );
-    store.extend(vec![StorableValue::Bottom; func_env.len()]);
+    store.extend(vec![StorableValue::Bottom; decvars.len()]);
 
     for (formal, val) in formals.into_iter().zip(vals.into_iter()) {
         store[func_env[&formal]] = val;
