@@ -378,7 +378,6 @@ pub fn setup_func_call(
     func_env.extend(
         decvars
             .iter()
-            .filter(|&x| !globals.contains(x))
             .enumerate()
             .map(|(i, x)| (x.to_string(), n + i)),
     );

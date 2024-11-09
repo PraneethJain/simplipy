@@ -225,7 +225,10 @@ fn traverse_stmt<'a, 'b>(
                 .decvars
                 .get_mut(&cur_lineno)
                 .unwrap()
-                .retain(|x| !static_info.nonlocals.get(&cur_lineno).unwrap().contains(x));
+                .retain(|x| {
+                    !static_info.nonlocals.get(&cur_lineno).unwrap().contains(x)
+                        && !static_info.globals.get(&cur_lineno).unwrap().contains(x)
+                });
             static_info.cur_scope_lineno = old_scope_lineno;
         }
         Stmt::Assign(ast::StmtAssign { targets, .. }) => {
@@ -264,7 +267,10 @@ fn traverse_stmt<'a, 'b>(
                 .decvars
                 .get_mut(&cur_lineno)
                 .unwrap()
-                .retain(|x| !static_info.nonlocals.get(&cur_lineno).unwrap().contains(x));
+                .retain(|x| {
+                    !static_info.nonlocals.get(&cur_lineno).unwrap().contains(x)
+                        && !static_info.globals.get(&cur_lineno).unwrap().contains(x)
+                });
             static_info.cur_scope_lineno = old_scope_lineno;
         }
         Stmt::Return(_) | Stmt::Pass(_) => {}
