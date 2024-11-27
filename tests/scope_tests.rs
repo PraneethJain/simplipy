@@ -261,68 +261,6 @@ pass
 }
 
 #[test]
-fn test_freevar_in_method() {
-    let source = r#"
-def test():
-    method_and_var = "var"
-    class Test:
-        def __init__(self):
-            return self
-        def method_and_var(self):
-            return "method"
-        def test(self):
-            return method_and_var
-        def actual_global(self):
-            return "global"
-    temp = Test()
-    return temp
-
-t = test()
-a = t.test()
-b = t.method_and_var()
-c = t.actual_global()
-
-method_and_var = "var"
-class Test:
-    def __init__(self):
-        return self
-    def method_and_var(self):
-        return "method"
-    def test(self):
-        return method_and_var
-    def actual_global(self):
-        return "global"
-
-t = Test()
-d = t.test()
-e = t.method_and_var()
-f = t.actual_global()
-
-pass
-"#;
-
-    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
-    let line_index = LineIndex::from_source_text(source);
-    let module = ast.as_module().unwrap();
-    let static_info = preprocess_module(module, &line_index, &source);
-    let mut state = init_state(&static_info);
-
-    while !is_fixed_point(&state, &static_info) {
-        state = tick(state, &static_info).unwrap();
-    }
-
-    lookup_and_assert!(
-        state,
-        ("a", StorableValue::String(String::from("var"))),
-        ("b", StorableValue::String(String::from("method"))),
-        ("c", StorableValue::String(String::from("global"))),
-        ("d", StorableValue::String(String::from("var"))),
-        ("e", StorableValue::String(String::from("method"))),
-        ("f", StorableValue::String(String::from("global"))),
-    );
-}
-
-#[test]
 fn test_recursion() {
     let source = r#"
 def f(x):
@@ -351,40 +289,6 @@ pass
     }
 
     lookup_and_assert!(state, ("a", StorableValue::Int(BigInt::from(720))),);
-}
-
-#[test]
-fn test_class_vs_lexical() {
-    let source = r#"
-def f():
-    return 1
-
-class A:
-    x = f()
-
-    def f(self):
-        return 2
-
-    y = f(10)
-
-x = A.x
-y = A.y
-
-pass
-"#;
-
-    let ast = parse(source, Mode::Module, "<embedded>").unwrap();
-    let line_index = LineIndex::from_source_text(source);
-    let module = ast.as_module().unwrap();
-    let static_info = preprocess_module(module, &line_index, &source);
-    let mut state = init_state(&static_info);
-
-    while !is_fixed_point(&state, &static_info) {
-        state = tick(state, &static_info).unwrap();
-    }
-
-    lookup_and_assert!(state, ("x", StorableValue::Int(BigInt::from(1))),);
-    lookup_and_assert!(state, ("y", StorableValue::Int(BigInt::from(2))),);
 }
 
 #[test]

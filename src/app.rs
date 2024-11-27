@@ -1,4 +1,4 @@
-use crate::datatypes::{State, StorableValue};
+use crate::datatypes::State;
 use crate::preprocess::Static;
 use crate::state::{init_state, is_fixed_point, tick};
 use ratatui::{
@@ -147,97 +147,97 @@ impl<'a> Widget for &App<'_> {
         let [env_area, store_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(var_area);
 
-        if let Some(local_env) = &self.cur_state.local_env {
-            let [local_env_area, global_env_area] =
-                Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(env_area);
+        // if let Some(local_env) = &self.cur_state.local_env {
+        //     let [local_env_area, global_env_area] =
+        //         Layout::vertical([Constraint::Fill(1), Constraint::Fill(1)]).areas(env_area);
 
-            Paragraph::new(Text::from(
-                local_env
-                    .iter()
-                    .map(|(i, val)| {
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .block(
-                Block::bordered()
-                    .title(Title::from(format!("Local Env")).alignment(Alignment::Center))
-                    .border_set(border::ROUNDED),
-            )
-            .render(local_env_area, buf);
+        //     Paragraph::new(Text::from(
+        //         local_env
+        //             .iter()
+        //             .map(|(i, val)| {
+        //                 Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+        //             })
+        //             .collect::<Vec<_>>(),
+        //     ))
+        //     .block(
+        //         Block::bordered()
+        //             .title(Title::from(format!("Local Env")).alignment(Alignment::Center))
+        //             .border_set(border::ROUNDED),
+        //     )
+        //     .render(local_env_area, buf);
 
-            Paragraph::new(Text::from(
-                self.cur_state
-                    .global_env
-                    .iter()
-                    .map(|(i, val)| {
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .block(
-                Block::bordered()
-                    .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
-                    .border_set(border::ROUNDED),
-            )
-            .render(global_env_area, buf);
-        } else {
-            Paragraph::new(Text::from(
-                self.cur_state
-                    .global_env
-                    .iter()
-                    .map(|(i, val)| {
-                        Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
-                    })
-                    .collect::<Vec<_>>(),
-            ))
-            .block(
-                Block::bordered()
-                    .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
-                    .border_set(border::ROUNDED),
-            )
-            .render(env_area, buf);
-        }
+        //     Paragraph::new(Text::from(
+        //         self.cur_state
+        //             .global_env
+        //             .iter()
+        //             .map(|(i, val)| {
+        //                 Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+        //             })
+        //             .collect::<Vec<_>>(),
+        //     ))
+        //     .block(
+        //         Block::bordered()
+        //             .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
+        //             .border_set(border::ROUNDED),
+        //     )
+        //     .render(global_env_area, buf);
+        // } else {
+        //     Paragraph::new(Text::from(
+        //         self.cur_state
+        //             .global_env
+        //             .iter()
+        //             .map(|(i, val)| {
+        //                 Line::from(format!("{}: ", i).bold().blue() + format!("{:?}", val).into())
+        //             })
+        //             .collect::<Vec<_>>(),
+        //     ))
+        //     .block(
+        //         Block::bordered()
+        //             .title(Title::from(format!("Global Env")).alignment(Alignment::Center))
+        //             .border_set(border::ROUNDED),
+        //     )
+        //     .render(env_area, buf);
+        // }
 
-        Paragraph::new(Text::from(
-            self.cur_state
-                .store
-                .iter()
-                .enumerate()
-                .flat_map(|(i, val)| {
-                    if let StorableValue::DefinitionClosure(lineno, env, _) = val {
-                        if self.expand_closures {
-                            let mut v = vec![Line::from(
-                                format!("{}: ", i).bold().blue()
-                                    + format!("Closure at line {}", lineno).into(),
-                            )];
+        // Paragraph::new(Text::from(
+        //     self.cur_state
+        //         .store
+        //         .iter()
+        //         .enumerate()
+        //         .flat_map(|(i, val)| {
+        //             if let StorableValue::DefinitionClosure(lineno, env, _) = val {
+        //                 if self.expand_closures {
+        //                     let mut v = vec![Line::from(
+        //                         format!("{}: ", i).bold().blue()
+        //                             + format!("Closure at line {}", lineno).into(),
+        //                     )];
 
-                            v.extend(
-                                env.iter()
-                                    .map(|local_env| Line::from(format!("{:?}", local_env))),
-                            );
+        //                     v.extend(
+        //                         env.iter()
+        //                             .map(|local_env| Line::from(format!("{:?}", local_env))),
+        //                     );
 
-                            v
-                        } else {
-                            vec![Line::from(
-                                format!("{}: ", i).bold().blue()
-                                    + format!("Closure at line {}", lineno).into(),
-                            )]
-                        }
-                    } else {
-                        vec![Line::from(
-                            format!("{}: ", i).bold().blue() + format!("{:?}", val).into(),
-                        )]
-                    }
-                })
-                .collect::<Vec<_>>(),
-        ))
-        .block(
-            Block::bordered()
-                .title(Title::from("Store").alignment(Alignment::Center))
-                .border_set(border::ROUNDED),
-        )
-        .render(store_area, buf);
+        //                     v
+        //                 } else {
+        //                     vec![Line::from(
+        //                         format!("{}: ", i).bold().blue()
+        //                             + format!("Closure at line {}", lineno).into(),
+        //                     )]
+        //                 }
+        //             } else {
+        //                 vec![Line::from(
+        //                     format!("{}: ", i).bold().blue() + format!("{:?}", val).into(),
+        //                 )]
+        //             }
+        //         })
+        //         .collect::<Vec<_>>(),
+        // ))
+        // .block(
+        //     Block::bordered()
+        //         .title(Title::from("Store").alignment(Alignment::Center))
+        //         .border_set(border::ROUNDED),
+        // )
+        // .render(store_area, buf);
 
         Paragraph::new(Text::from(
             self.cur_state

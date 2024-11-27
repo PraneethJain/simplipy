@@ -3,25 +3,14 @@ use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Neg, Not, Rem, Sub};
 
 pub type Stack = Vec<Context>;
-pub type Store = Vec<StorableValue>;
-pub type Env = BTreeMap<String, usize>;
+pub type EnvId = usize;
+pub type Env = BTreeMap<String, StorableValue>;
+pub type Envs = BTreeMap<EnvId, Env>;
+pub type Parent = BTreeMap<EnvId, EnvId>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Context {
-    Lexical(usize, Option<Env>),
-    Class(usize, Env),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Object {
-    pub metadata: ObjectMetadata,
-    pub env_addr: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ObjectMetadata {
-    pub class: Option<usize>,
-    pub mro: Option<Vec<usize>>,
+    Lexical(usize, EnvId),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -32,18 +21,16 @@ pub enum StorableValue {
     Int(BigInt),
     Float(f64),
     String(String),
-    DefinitionClosure(usize, Option<Env>, Vec<String>),
-    Env(Env),
-    Object(Object),
+    DefinitionClosure(usize, EnvId, Vec<String>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
     pub lineno: usize,
-    pub global_env: Env,
-    pub local_env: Option<Env>,
+    pub env_id: EnvId,
+    pub envs: Envs,
+    pub parent: Parent,
     pub stack: Stack,
-    pub store: Store,
 }
 
 impl PartialOrd for StorableValue {
@@ -136,9 +123,7 @@ impl Not for StorableValue {
             | StorableValue::Int(_)
             | StorableValue::Float(_)
             | StorableValue::String(_)
-            | StorableValue::DefinitionClosure(_, _, _)
-            | StorableValue::Env(_)
-            | StorableValue::Object(_) => None,
+            | StorableValue::DefinitionClosure(_, _, _) => None,
         }
     }
 }
@@ -178,9 +163,7 @@ impl Neg for StorableValue {
             | StorableValue::None
             | StorableValue::Bool(_)
             | StorableValue::String(_)
-            | StorableValue::DefinitionClosure(_, _, _)
-            | StorableValue::Env(_)
-            | StorableValue::Object(_) => None,
+            | StorableValue::DefinitionClosure(_, _, _) => None,
         }
     }
 }
@@ -209,38 +192,6 @@ impl StorableValue {
     pub fn bool(self) -> Option<bool> {
         if let StorableValue::Bool(bool_val) = self {
             Some(bool_val)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_object(&self) -> Option<&Object> {
-        if let StorableValue::Object(object) = self {
-            Some(object)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_env(&self) -> Option<&Env> {
-        if let StorableValue::Env(env) = self {
-            Some(env)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_object(&mut self) -> Option<&mut Object> {
-        if let StorableValue::Object(object) = self {
-            Some(object)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_mut_env(&mut self) -> Option<&mut Env> {
-        if let StorableValue::Env(env) = self {
-            Some(env)
         } else {
             None
         }

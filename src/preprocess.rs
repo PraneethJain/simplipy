@@ -31,6 +31,8 @@ pub fn preprocess_module<'a>(
 ) -> Static<'a> {
     let mut static_info = Static::default();
     static_info.decvars.insert(0, BTreeSet::new());
+    static_info.globals.insert(0, BTreeSet::new());
+    static_info.block.insert(0, (0, usize::MAX));
 
     traverse_module(module, line_index, source, &mut static_info);
 
@@ -86,15 +88,18 @@ fn traverse_body<'a, 'b>(
     line_index: &LineIndex,
     source: &str,
     static_info: &'b mut Static<'a>,
+    lexical: bool,
 ) {
     let (new_statements, new_next_stmts) = new_block(body, line_index, source);
 
     if !new_statements.is_empty() {
         let start_lineno = new_statements.first().unwrap().0;
         let end_lineno = new_statements.last().unwrap().0;
-        static_info
-            .block
-            .insert(parent_lineno, (start_lineno, end_lineno));
+        if lexical {
+            static_info
+                .block
+                .insert(parent_lineno, (start_lineno, end_lineno));
+        }
 
         if let Some(&parent_next_lineno) = static_info.next_stmt.get(&parent_lineno) {
             static_info.next_stmt.insert(end_lineno, parent_next_lineno);
@@ -135,7 +140,7 @@ fn traverse_stmt<'a, 'b>(
                 static_info.false_stmt.insert(cur_lineno, false_lineno);
             }
 
-            traverse_body(cur_lineno, body, line_index, source, static_info);
+            traverse_body(cur_lineno, body, line_index, source, static_info, false);
         }
         Stmt::If(ast::StmtIf { body, orelse, .. }) => {
             let true_lineno = get_current_line!(
@@ -161,8 +166,8 @@ fn traverse_stmt<'a, 'b>(
                 static_info.false_stmt.insert(cur_lineno, false_lineno);
             }
 
-            traverse_body(cur_lineno, body, line_index, source, static_info);
-            traverse_body(cur_lineno, orelse, line_index, source, static_info);
+            traverse_body(cur_lineno, body, line_index, source, static_info, false);
+            traverse_body(cur_lineno, orelse, line_index, source, static_info, false);
         }
         Stmt::Continue(ast::StmtContinue { .. }) => {
             let mut lineno = cur_lineno;
@@ -220,7 +225,7 @@ fn traverse_stmt<'a, 'b>(
             );
             static_info.globals.insert(cur_lineno, BTreeSet::new());
             static_info.nonlocals.insert(cur_lineno, BTreeSet::new());
-            traverse_body(cur_lineno, body, line_index, source, static_info);
+            traverse_body(cur_lineno, body, line_index, source, static_info, true);
             static_info
                 .decvars
                 .get_mut(&cur_lineno)
@@ -262,7 +267,7 @@ fn traverse_stmt<'a, 'b>(
             static_info.decvars.insert(cur_lineno, BTreeSet::new());
             static_info.globals.insert(cur_lineno, BTreeSet::new());
             static_info.nonlocals.insert(cur_lineno, BTreeSet::new());
-            traverse_body(cur_lineno, body, line_index, source, static_info);
+            traverse_body(cur_lineno, body, line_index, source, static_info, false);
             static_info
                 .decvars
                 .get_mut(&cur_lineno)
