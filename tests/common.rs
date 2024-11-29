@@ -4,7 +4,7 @@ macro_rules! lookup_and_assert {
         $(
             let value = lookup(
                 $var,
-                $state.env_id,
+                $state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
                 &$state.envs,
                 &$state.parent,
                 &std::collections::BTreeSet::<&str>::new(),

@@ -327,6 +327,7 @@ pass
     let mut state = init_state(&static_info);
 
     while !is_fixed_point(&state, &static_info) {
+        println!("{:?}", state.envs);
         state = tick(state, &static_info).unwrap();
     }
 

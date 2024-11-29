@@ -2,16 +2,12 @@ use rustpython_parser::ast::bigint::BigInt;
 use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Neg, Not, Rem, Sub};
 
-pub type Stack = Vec<Context>;
+pub type Stack = Vec<LexicalContext>;
 pub type EnvId = usize;
 pub type Env = BTreeMap<String, StorableValue>;
 pub type Envs = BTreeMap<EnvId, Env>;
 pub type Parent = BTreeMap<EnvId, EnvId>;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Context {
-    Lexical(usize, EnvId),
-}
+pub type LexicalContext = (usize, EnvId);
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StorableValue {
@@ -27,7 +23,6 @@ pub enum StorableValue {
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
     pub lineno: usize,
-    pub env_id: EnvId,
     pub envs: Envs,
     pub parent: Parent,
     pub stack: Stack,
