@@ -22,7 +22,6 @@ pub enum StorableValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct State {
-    pub lineno: usize,
     pub envs: Envs,
     pub parent: Parent,
     pub stack: Stack,

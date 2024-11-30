@@ -8,19 +8,21 @@ use crate::utils::{eval, find_lexical_block, lookup, setup_func_call, update};
 
 pub fn init_state(static_info: &Static) -> State {
     State {
-        lineno: *static_info
-            .statements
-            .keys()
-            .min()
-            .expect("Atleast one statement should be present"),
         envs: BTreeMap::from([(0, BTreeMap::new())]),
         parent: BTreeMap::new(),
-        stack: vec![],
+        stack: vec![(
+            *static_info
+                .statements
+                .keys()
+                .min()
+                .expect("Atleast one statement should be present"),
+            0,
+        )],
     }
 }
 
 pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
-    let lineno = state.lineno;
+    let (lineno, env_id) = state.stack.last().unwrap().clone();
     let stmt = static_info.statements[&lineno];
 
     let lexical_block_lineno = find_lexical_block(lineno, &static_info.block).unwrap();
@@ -31,13 +33,8 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
             if let Some(ast::ExprCall { func, args, .. }) = value.as_call_expr() {
                 match *func.clone() {
                     ast::Expr::Name(ast::ExprName { id, .. }) => {
-                        let func = lookup(
-                            id.as_str(),
-                            state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                            &state.envs,
-                            &state.parent,
-                            globals,
-                        )?;
+                        let func =
+                            lookup(id.as_str(), env_id, &state.envs, &state.parent, globals)?;
                         match func {
                             StorableValue::DefinitionClosure(
                                 func_lineno,
@@ -50,15 +47,7 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 
                                 let vals = args
                                     .iter()
-                                    .map(|x| {
-                                        eval(
-                                            x,
-                                            state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                                            &state.envs,
-                                            &state.parent,
-                                            globals,
-                                        )
-                                    })
+                                    .map(|x| eval(x, env_id, &state.envs, &state.parent, globals))
                                     .collect::<Option<Vec<_>>>()?;
 
                                 let new_envs = setup_func_call(
@@ -68,12 +57,13 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                                     vals,
                                 );
 
-                                state.stack.push((lineno, new_envs.len() - 1));
+                                state
+                                    .stack
+                                    .push((static_info.block[&func_lineno].0, new_envs.len() - 1));
                                 let mut new_parent = state.parent;
                                 new_parent.insert(new_envs.len() - 1, parent_env_id);
 
                                 State {
-                                    lineno: static_info.block[&func_lineno].0,
                                     envs: new_envs,
                                     parent: new_parent,
                                     ..state
@@ -85,65 +75,54 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     _ => unimplemented!(),
                 }
             } else {
-                let val = eval(
-                    value,
-                    state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                    &state.envs,
-                    &state.parent,
-                    globals,
-                )?;
+                let val = eval(value, env_id, &state.envs, &state.parent, globals)?;
                 let var = &targets[0].as_name_expr().unwrap().id;
 
                 let new_envs = if globals.contains(var.as_str()) {
                     state.envs.get_mut(&0).unwrap().insert(var.to_string(), val);
                     state.envs
                 } else {
-                    update(
-                        var,
-                        val,
-                        state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                        state.envs,
-                        &state.parent,
-                    )
+                    update(var, val, env_id, state.envs, &state.parent)
                 };
 
+                let (lineno, env_id) = state.stack.pop().unwrap();
+                state.stack.push((static_info.next_stmt[&lineno], env_id));
+
                 State {
-                    lineno: static_info.next_stmt[&lineno],
                     envs: new_envs,
                     ..state
                 }
             }
         }
         Stmt::While(ast::StmtWhile { test, .. }) | Stmt::If(ast::StmtIf { test, .. }) => {
-            let res = eval(
-                &test,
-                state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                &state.envs,
-                &state.parent,
-                globals,
-            )?;
+            let res = eval(&test, env_id, &state.envs, &state.parent, globals)?;
             let bool_res = res.bool()?;
-            State {
-                lineno: if bool_res {
+
+            let (lineno, env_id) = state.stack.pop().unwrap();
+            state.stack.push((
+                if bool_res {
                     static_info.true_stmt[&lineno]
                 } else {
                     static_info.false_stmt[&lineno]
                 },
-                ..state
-            }
+                env_id,
+            ));
+
+            State { ..state }
         }
         Stmt::Continue(ast::StmtContinue { .. })
         | Stmt::Break(ast::StmtBreak { .. })
         | Stmt::Pass(ast::StmtPass { .. })
         | Stmt::Global(ast::StmtGlobal { .. })
-        | Stmt::Nonlocal(ast::StmtNonlocal { .. }) => State {
-            lineno: static_info.next_stmt[&lineno],
-            ..state
-        },
+        | Stmt::Nonlocal(ast::StmtNonlocal { .. }) => {
+            let (lineno, env_id) = state.stack.pop().unwrap();
+            state.stack.push((static_info.next_stmt[&lineno], env_id));
+            state
+        }
         Stmt::FunctionDef(ast::StmtFunctionDef { name, args, .. }) => {
             let closure = StorableValue::DefinitionClosure(
                 lineno,
-                state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
+                env_id,
                 args.args.iter().map(|x| x.def.arg.to_string()).collect(),
             );
 
@@ -155,35 +134,26 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     .insert(name.to_string(), closure);
                 state.envs
             } else {
-                update(
-                    name,
-                    closure,
-                    state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                    state.envs,
-                    &state.parent,
-                )
+                update(name, closure, env_id, state.envs, &state.parent)
             };
 
+            let (lineno, env_id) = state.stack.pop().unwrap();
+            state.stack.push((static_info.next_stmt[&lineno], env_id));
+
             State {
-                lineno: static_info.next_stmt[&lineno],
                 envs: new_envs,
                 ..state
             }
         }
         Stmt::Return(ast::StmtReturn { value, .. }) => {
             let val = if let Some(expr) = value {
-                eval(
-                    expr,
-                    state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                    &state.envs,
-                    &state.parent,
-                    globals,
-                )?
+                eval(expr, env_id, &state.envs, &state.parent, globals)?
             } else {
                 StorableValue::None
             };
 
-            if let Some((ret_lineno, _)) = state.stack.pop() {
+            if let Some((_, _)) = state.stack.pop() {
+                let (ret_lineno, ret_env_id) = state.stack.last().unwrap().clone();
                 let targets = static_info.statements[&ret_lineno]
                     .as_assign_stmt()
                     .expect("Functions must be called in assignment statements")
@@ -197,17 +167,13 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
                     state.envs.get_mut(&0).unwrap().insert(var.to_string(), val);
                     state.envs
                 } else {
-                    update(
-                        var,
-                        val,
-                        state.stack.last().and_then(|x| Some(x.1)).unwrap_or(0),
-                        state.envs,
-                        &state.parent,
-                    )
+                    update(var, val, ret_env_id, state.envs, &state.parent)
                 };
 
+                let (lineno, env_id) = state.stack.pop().unwrap();
+                state.stack.push((static_info.next_stmt[&lineno], env_id));
+
                 State {
-                    lineno: static_info.next_stmt[&ret_lineno],
                     envs: new_envs,
                     ..state
                 }
@@ -238,6 +204,6 @@ pub fn tick(mut state: State, static_info: &Static) -> Option<State> {
 }
 
 pub fn is_fixed_point(state: &State, static_info: &Static) -> bool {
-    let lineno = state.lineno;
+    let lineno = state.stack.last().unwrap().0;
     static_info.next_stmt[&lineno] == lineno
 }

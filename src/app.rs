@@ -127,7 +127,7 @@ impl<'a> Widget for &App<'_> {
                 .enumerate()
                 .map(|(i, x)| {
                     let mut line = Line::from((format!("{:02}: ", i + 1)).blue() + x.into());
-                    if i + 1 == self.cur_state.lineno {
+                    if i + 1 == self.cur_state.stack.last().unwrap().0 {
                         line = line.on_black();
                     }
                     line
