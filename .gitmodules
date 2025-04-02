@@ -1,0 +1,6 @@
+[submodule "simplipy-backend"]
+	path = simplipy-backend
+	url = https://github.com/PraneethJain/simplipy-backend
+[submodule "simplipy-frontend"]
+	path = simplipy-frontend
+	url = https://github.com/PraneethJain/simplipy-frontend
