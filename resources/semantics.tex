@@ -1,0 +1,262 @@
+
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\usepackage{color}
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+
+\newcommand{\lit}[1]{\textit{#1}}
+\newcommand{\trm}[1]{\ensuremath{\textbf{#1}}}
+\newcommand{\state}[3]{(#1, #2, #3)} % State tuple (e, p, k)
+\newcommand{\context}[2]{(#1, #2)} % Context tuple (loc, env_id)
+\newcommand{\lookupenv}{\text{lookup\_env}}
+\newcommand{\lookupval}{\text{lookup\_val}}
+\newcommand{\evalexpr}{\text{eval}}
+\newcommand{\updateenv}{\text{update\_env}}
+\newcommand{\createnewenv}{\text{create\_new\_env}}
+\newcommand{\lookupctf}{\text{ctf}}
+\newcommand{\mkwtext}[1]{\text{\small #1}}
+
+\usepackage{makecell}
+\renewcommand\theadalign{bc}
+\renewcommand\theadfont{\normalsize\bfseries}
+
+\begin{document}
+
+\section*{Appendix B: Transition Relations}
+
+Let the current state be $\state{e}{h}{k}$ where $k = \context{i}{\text{env\_id}} \cdot k_{\text{rest}}$. The next state $\state{e'}{h'}{k'}$ is determined by the instruction $P_i$ as follows:
+
+\paragraph{Pass, Break, Continue, Global, Nonlocal}
+\[ \state{e'}{h'}{k'} = \state{e}{h}{\context{\text{next}[i]}{\text{env\_id}} \cdot k_{\text{rest}}} \]
+
+\paragraph{Expression Assignment}
+\begin{displaymath}
+	\begin{aligned}
+		\state{e'}{h'}{k'}  & =
+		\begin{cases*}
+			\state{e_{\text{updated}}}{h}{\context{\text{next}[i]}{\text{env\_id}} \cdot k_{\text{rest}}} & \text{if } val $\neq$ error \\
+			\state{e}{h}{\context{\text{err}[i]}{\text{env\_id}} \cdot k_{\text{rest}}}                   & \text{if } val = error
+		\end{cases*}
+		\\
+		                    & \text{where}
+		\\
+		P_{i}               & = \lit{var} = \lit{expr}                                                       \\
+		val                 & = \evalexpr(\lit{expr}, \text{env\_id}, e, h)                                  \\
+		env_{\text{target}} & = \lookupenv(\lit{var}, \text{env\_id}, e, h)                                  \\
+		e_{\text{updated}}  & = e[env_{\text{target}} \leftarrow env_{\text{target}}[\lit{var} \mapsto val]] \\
+	\end{aligned}
+\end{displaymath}
+
+\paragraph{If, While}
+\begin{displaymath}
+	\begin{aligned}
+		\state{e'}{h'}{k'} & =
+		\begin{cases*}
+			\state{e}{h}{\context{\text{true}[i]}{\text{env\_id}} \cdot k_{\text{rest}}}  & \text{if} val = true  \\
+			\state{e}{h}{\context{\text{false}[i]}{\text{env\_id}} \cdot k_{\text{rest}}} & \text{if} val = false \\
+			\state{e}{h}{\context{\text{err}[i]}{\text{env\_id}} \cdot k_{\text{rest}}}   & \text{otherwise}      \\
+		\end{cases*}
+		\\
+		                   & \text{where}
+		\\
+		P_{i}              & = \text{if/while } \lit{expr}:                \\
+		val                & = \evalexpr(\lit{expr}, \text{env\_id}, e, h) \\
+	\end{aligned}
+\end{displaymath}
+
+\paragraph{Function Definition}
+\begin{displaymath}
+	\begin{aligned}
+		\state{e'}{h'}{k'}  & =
+		\begin{cases*}
+			\state{e_{\text{updated}}}{h}{\context{\text{next}[i]}{\text{env\_id}} \cdot k_{\text{rest}}} & \text{if } val $\neq$ error \\
+			\state{e}{h}{\context{\text{err}[i]}{\text{env\_id}} \cdot k_{\text{rest}}}                   & \text{if } val = error
+		\end{cases*}
+		\\
+		                    & \text{where}
+		\\
+		P_{i}               & = \text{def } \lit{var} (id_{1}, id_{2}, \ldots, id_{n}):                          \\
+		f_{\text{entry}}    & = \text{entry location of function block}                                          \\
+		closure             & = Closure(f_{\text{entry}}, \text{env\_id}, [id_{1}, id_{2}, \ldots, id_{n}])      \\
+		env_{\text{target}} & = \lookupenv(\lit{var}, \text{env\_id}, e, h)                                      \\
+		e_{\text{updated}}  & = e[env_{\text{target}} \leftarrow env_{\text{target}}[\lit{var} \mapsto closure]] \\
+	\end{aligned}
+\end{displaymath}
+
+\paragraph{Call Assignment}
+\begin{displaymath}
+	\begin{aligned}
+		 & \state{e'}{h'}{k'}           =
+		\begin{cases*}
+			\state{e''}{h''}{k''}                                                       & \text{if } $|arg\_vals| = |formals| \land \forall v \in vals, v \neq \text{error}$ \\
+			\state{e}{h}{\context{\text{err}[i]}{\text{env\_id}} \cdot k_{\text{rest}}} & otherwise
+		\end{cases*}
+		\\
+		 & \text{where}
+		\\
+		 & P_{i}                          = \lit{var} = \lit{func\_var}(args)                               \\
+		 & vals_{j}                       = \evalexpr(args_{j}, \text{env\_id}, e, h), 1 \leq j \leq |args| \\
+		 & closure     = \lookupval(func\_var, \text{env\_id}, e, h)                                        \\
+		 & Closure(f_{\text{loc}}, par\_env\_id, formals) = closure                                         \\
+		 & \text{env\_new\_id}            = \createnewenv(e)                                                \\
+		 & env_{\text{new}} = \text{populate\_env}(closure, \text{env\_new\_id})                            \\
+		 & e'' = e + \{ \text{env\_new\_id} \mapsto env_{\text{new}} \}                                     \\
+		 & h'' = h + \{\text{env\_new\_id} \mapsto \text{par\_env\_id}\}                                    \\
+		 & k'' = \context{f_{\text{loc}}}{\text{env\_new\_id}} \cdot k
+	\end{aligned}
+\end{displaymath}
+
+\paragraph{Return}
+\begin{displaymath}
+	\begin{aligned}
+		 & \state{e'}{h'}{k'} =
+		\begin{cases*}
+			\state{e''}{h}{\context{\text{next}[\text{ret\_loc})]}{\text{ret\_env\_id}} \cdot k'_{\text{rest}}}
+		\end{cases*}
+		\\
+		 & where                                                                                                           \\
+		 & P_{i} = \text{return } expr                                                                                     \\
+		 & val = \evalexpr(\lit{expr}, \text{env\_id}, e, h)                                                               \\
+		 & \context{i}{\text{env\_id}} \cdot \context{\text{ret\_loc}}{\text{ret\_env\_id}} \cdot k'_{\text{rest}} = k     \\
+		 & P_{\text{ret\_loc}} = assign\_var = \ldots                                                                      \\
+		 & e'' = e[\lookupenv(\lit{assign\_var}, \text{ret\_env\_id}, e, h) \leftarrow env[\lit{assign\_var} \mapsto val]]
+	\end{aligned}
+\end{displaymath}
+
+\section*{Descriptions of Helper Functions}
+
+The formal transition rules in the previous section utilize several helper
+functions to manage control flow, evaluate expressions, handle environments, and
+perform lookups according to Python's scoping rules within the SimpliPy subset.
+These functions are conceptually defined as follows:
+
+\paragraph{\texttt{evalexpr}(\textit{expr}, \textit{env\_id}, \textit{e}, \textit{h})}
+Evaluates a SimpliPy expression \textit{expr} within the current execution
+context.
+\begin{itemize}
+	\item \textbf{Inputs:} The expression \textit{expr} to evaluate, the current
+	      environment identifier \textit{env\_id}, the global lexical map \textit{e}, and
+	      the lexical hierarchy \textit{h}.
+	\item \textbf{Output:} The computed value of the expression, or a special
+	      `error' marker if evaluation fails (e.g., type error, variable not found).
+	\item \textbf{Behavior:}
+	      \begin{itemize}
+		      \item If \textit{expr} is a constant, returns the constant's value.
+		      \item If \textit{expr} is a variable name, uses
+		            \texttt{lookupval}(\textit{expr}, \textit{env\_id}, \textit{e}, \textit{h}) to
+		            find its value. Returns `error' if \texttt{lookupval} fails.
+		      \item If \textit{expr} involves operators, recursively calls
+		            \texttt{evalexpr} on sub-expressions, performs the operation, and returns the
+		            result. Propagates `error' if any sub-evaluation fails or if the operation is
+		            invalid for the operand types.
+	      \end{itemize}
+\end{itemize}
+
+\paragraph{\texttt{lookupenv}(\textit{var}, \textit{env\_id}, \textit{e}, \textit{h})}
+Determines the target \textit{environment ID} where a variable \textit{var}
+exists or where a new binding for it should be created during an assignment.
+This function embodies Python's LEGB-like scope resolution for assignments and
+lookups.
+\begin{itemize}
+	\item \textbf{Inputs:} The variable name \textit{var}, the current
+	      environment identifier \textit{env\_id}, the lexical map \textit{e}, and the
+	      lexical hierarchy \textit{h}.
+	\item \textbf{Output:} The identifier of the environment where \textit{var}
+	      is found or should be bound/updated, or `error'.
+	\item \textbf{Behavior:}
+	      \begin{itemize}
+		      \item Consults static analysis results for the scope associated
+		            with \textit{env\_id}.
+		      \item If \textit{var} is declared \texttt{global} in this scope,
+		            returns 0 (the global environment ID).
+		      \item If \textit{var} is declared \texttt{nonlocal}, searches
+		            ancestor environments starting from the parent of \textit{env\_id} (using
+		            \textit{h}) upwards towards (but *not* including) the global scope. Returns the
+		            ID of the first ancestor environment found that contains a binding for
+		            \textit{var}. If not found, signals an error (e.g., returns -1 or raises an
+		            exception).
+		      \item Otherwise (neither \texttt{global} nor \texttt{nonlocal}):
+		            \begin{itemize}
+			            \item Traverses the lexical hierarchy starting from the
+			                  current environment \textit{env\_id} upwards towards and including the global
+			                  environment (ID 0), using the parent links in \textit{h}.
+			            \item At each environment ID $curr\_env\_id$ in this
+			                  traversal, check if \textit{var} exists as a key in the environment
+			                  $e[curr\_env\_id]$.
+			            \item If \textit{var} is found in $e[curr\_env\_id]$,
+			                  return $curr\_env\_id$.
+			            \item If the traversal completes (reaches global scope
+			                  and checks it) without finding \textit{var}, return the *original* starting
+			                  environment identifier \textit{env\_id}. This indicates that if an assignment
+			                  occurs, a new binding should be created in the current local scope.
+		            \end{itemize}
+	      \end{itemize}
+\end{itemize}
+
+\paragraph{\texttt{lookupval}(\textit{var}, \textit{env\_id}, \textit{e}, \textit{h})}
+Looks up the \textit{value} associated with a variable name \textit{var}. It
+first determines the correct environment using \texttt{lookupenv} and then
+retrieves the value.
+\begin{itemize}
+	\item \textbf{Inputs:} The variable name \textit{var}, the starting
+	      environment identifier \textit{env\_id}, the lexical map \textit{e}, and the
+	      lexical hierarchy \textit{h}.
+	\item \textbf{Output:} The value bound to \textit{var}, or an `error' marker
+	      if the variable is not found in any accessible scope (i.e., if
+	      \texttt{lookupenv} indicates it doesn't exist).
+	\item \textbf{Behavior:}
+	      \begin{itemize}
+		      \item Call \texttt{target\_env\_id = lookupenv(\textit{var},
+			            \textit{env\_id}, \textit{e}, \textit{h})}.
+		      \item If $target\_env\_id$ indicates that the variable was not found
+		            during the lookup traversal, return `error'.
+		      \item Otherwise (the variable was found in environment
+		            $target\_env\_id$), retrieve the environment map $env = e[target\_env\_id]$.
+		      \item Return the value associated with \textit{var} in that map:
+		            $env[var]$.
+	      \end{itemize}
+\end{itemize}
+
+\paragraph{\texttt{createnewenv}(\textit{e})}
+Generates a unique identifier for a new environment frame.
+\begin{itemize}
+	\item \textbf{Input:} The current lexical map \textit{e}.
+	\item \textbf{Output:} A new integer environment ID that is not currently a
+	      key in \textit{e}.
+	\item \textbf{Behavior:} Typically implemented by finding the maximum
+	      existing ID in `dom(e)` and returning the next integer.
+\end{itemize}
+
+\paragraph{\texttt{populate\_env}(\textit{closure}, \textit{env\_new\_id}, \textit{arg\_vals})}
+Initializes a new environment frame (\textit{env\_new\_id}) for a function call.
+(Note: This function was used conceptually in the Call Assignment rule
+description).
+\begin{itemize}
+	\item \textbf{Inputs:} The \textit{closure} being invoked (containing formal
+	      parameters and definition environment ID), the ID for the new environment
+	      \textit{env\_new\_id}, and the list of evaluated argument values
+	      \textit{arg\_vals}.
+	\item \textbf{Output:} A new environment dictionary (mapping variable names
+	      to values) representing the initial state of the function's local scope.
+	\item \textbf{Behavior:}
+	      \begin{itemize}
+		      \item Creates bindings in the new environment dictionary mapping
+		            each formal parameter name (from the \textit{closure}) to the corresponding
+		            value in \textit{arg\_vals}.
+		      \item Identifies (via static analysis of the function's body) all
+		            other variables defined locally within that function.
+		      \item Initializes these other local variables in the new
+		            environment dictionary to a special `uninitialized' marker ($\bot$).
+	      \end{itemize}
+\end{itemize}
+
+\end{document}

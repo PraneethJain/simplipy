@@ -1,0 +1,81 @@
+\documentclass[runningheads]{llncs}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\usepackage{color}
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+
+\newcommand{\lit}[1]{\textit{#1}}
+\newcommand{\trm}[1]{\ensuremath{\textbf{#1}}}
+\newcommand{\state}[3]{(#1, #2, #3)} % State tuple (e, p, k)
+\newcommand{\context}[2]{(#1, #2)} % Context tuple (loc, env_id)
+\newcommand{\lookupenv}{\text{lookup\_env}}
+\newcommand{\lookupval}{\text{lookup\_val}}
+\newcommand{\evalexpr}{\text{eval}}
+\newcommand{\updateenv}{\text{update\_env}}
+\newcommand{\createnewenv}{\text{create\_new\_env}}
+\newcommand{\lookupctf}{\text{ctf}}
+\newcommand{\mkwtext}[1]{\text{\small #1}}
+
+\usepackage{makecell}
+\renewcommand\theadalign{bc}
+\renewcommand\theadfont{\normalsize\bfseries}
+
+\begin{document}
+
+
+\section*{Appendix A: SimpliPy BNF Grammar}
+
+\begin{verbatim}
+<pgm> ::= <block>
+
+<block> ::= <stmt>+
+
+<stmt> ::= <exp-assign-stmt>
+         | <call-assign-stmt>
+         | <if-stmt>
+         | <while-stmt>
+         | <def-stmt>
+         | <ret-stmt>
+         | <pass-stmt>
+         | <break-stmt>
+         | <continue-stmt>
+         | <global-stmt>
+         | <nonlocal-stmt>
+
+<exp-assign-stmt> ::= <id> = <exp>
+<call-assign-stmt> ::= <id> = <id> ( <exp> ... )
+<if-stmt> ::= if <exp>: <block> else: <block>
+<while-stmt> ::= while <exp>: <block>
+                 (* Constraint: Block must end with continue *)
+<def-stmt> ::= def <id> ( <id> ... ): <block>
+               (* Constraint: Block must end with return *)
+<ret-stmt> ::= return <exp>
+<pass-stmt> ::= pass
+<break-stmt> ::= break
+<continue-stmt> ::= continue
+<global-stmt> ::= global <id> ...
+<nonlocal-stmt> ::= nonlocal <id> ...
+
+<exp> ::= <const>
+        | <id>
+        | <exp> <binop> <exp>
+        | <unop> <exp>
+        | ( <exp> )
+
+<const> ::= int | float | str | bool | None
+<unop> ::= - | + | not
+<binop> ::= + | - | * | / | // | % | **
+          | > | < | == | <= | >= | !=
+          | and | or
+          | is | is not | in | not in
+\end{verbatim}
+
+\end{document}
